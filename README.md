@@ -1,0 +1,182 @@
+# waterfront
+
+A shared wiki for agents and humans. Agents read and write through a CLI;
+humans browse through a web interface. Every mutation is recorded forever,
+and the entire wiki can be reconstructed exactly as it was at any point in
+its history.
+
+```text
+Everything is a node.
+Every node has a stable identity.
+Nodes form a tree.
+Paths address nodes.
+Every mutation creates an immutable node revision.
+Every atomic mutation belongs to a wiki-wide commit.
+A commit defines the complete state of the wiki at that point.
+The current nodes table is a fast projection of that history.
+```
+
+Nodes are addressed with dot-separated paths. The first segment is the wiki
+itself; the root node *is* the wiki:
+
+```text
+acme
+acme.about
+acme.about.foo
+```
+
+Markdown is the canonical content format. A node can hold content and have
+children at the same time — there is no file-vs-directory distinction.
+
+## Architecture
+
+```text
+wiki-cli ────────┐
+                 ▼
+              wiki-sdk
+                 ▲
+                 │
+wiki-web ────────┘
+                 │
+                 ▼
+              wiki-api
+                 │
+                 ▼
+              wiki-kit
+                 │
+                 ▼
+               SQLite
+
+wiki-skills teaches agents how to use wiki-cli
+```
+
+| package | responsibility |
+|---|---|
+| `wiki-kit` | The domain core. All SQL, schema/migrations, transactions, path validation, hierarchy, revisions, commits, optimistic concurrency, historical reconstruction, the FTS search projection, and domain errors. The database connection is injected; wiki-kit never owns its lifecycle. |
+| `wiki-api` | Thin HTTP layer: a single JSON-RPC 2.0 endpoint (`POST /rpc`), pluggable authentication/authorization, transport validation, error mapping, and trusted actor context. No SQL, no domain rules. |
+| `wiki-sdk` | Environment-neutral client for Node.js and browsers. Depends only on `fetch` (injectable). Hides JSON-RPC, maps API errors to typed error classes. No domain logic. |
+| `wiki-cli` | The `wiki` executable. Talks only to the API through the SDK. |
+| `wiki-web` | Minimal read-oriented browser UI (tree, safe Markdown rendering, search, history). Uses the SDK; never touches the database. |
+| `wiki-skills` | An agent skill (`SKILL.md`) teaching safe CLI behavior, with tests that verify it against the actual command definitions. |
+
+Boundaries are architectural requirements: SQL never escapes `wiki-kit`;
+auth never enters it; CLI and web never bypass the API/SDK.
+
+## Development
+
+Requires Node.js 22+ and pnpm.
+
+```bash
+pnpm install
+pnpm test        # full suite, all packages
+
+pnpm dev:api     # API on :3000 (WIKI_DB, WIKI_DEV_TOKEN, PORT to override)
+pnpm dev:web     # web UI on :3001 (WEB_PORT to override)
+```
+
+Then, in another shell:
+
+```bash
+export WIKI_URL=http://localhost:3000
+export WIKI_TOKEN=dev-token
+
+wiki set acme "This is the Acme wiki"       # creates the wiki
+wiki set acme.about.foo "Foo"               # intermediate nodes auto-created
+wiki tree acme
+```
+
+(`wiki` is linked into `node_modules/.bin` at the workspace root; use
+`./node_modules/.bin/wiki` or add it to your PATH.)
+
+Open `http://localhost:3001`, and connect with the same URL/token via the ⚙
+settings panel to browse.
+
+## CLI
+
+```bash
+wiki get <path>              # raw content on stdout; --json for everything
+wiki set <path> [content]    # inline arg, stdin/heredoc, or --file (one only)
+wiki tree <path>             # --depth, --commit, --at
+wiki search <path> <query>   # FTS over the subtree; --limit
+wiki history <path>          # revisions, newest first
+wiki move <from> <to>        # subtree moves, identity preserved
+wiki rm <path>               # --recursive for subtrees, --if-commit for safety
+```
+
+Every meaningful command supports `--json`. Writes support `--if-revision`
+(optimistic concurrency) and `--message`. Historical reads use `--commit <id>`
+or `--at <iso timestamp>` (mutually exclusive). Configuration comes from
+`WIKI_URL` / `WIKI_TOKEN` or `--url` / `--token`.
+
+Exit codes: `0` success, `1` general failure, `2` invalid arguments,
+`3` not found, `4` conflict, `5` unauthenticated, `6` unauthorized.
+stdout carries only requested data; errors go to stderr.
+
+## Database model
+
+Three central tables, all owned by `wiki-kit`:
+
+- **`commits`** — one row per atomic wiki mutation (integer autoincrement id,
+  wiki id, trusted actor identity, message, UTC timestamp). A commit is a
+  complete-state boundary for its wiki.
+- **`nodes`** — the *current-state projection*: one row per node identity
+  (UUID) with parent, slug, materialized path, title, content, JSON metadata,
+  latest revision/commit, and a `deleted` tombstone flag. Partial unique
+  indexes enforce: one active root per wiki, globally unique active root
+  slugs, unique active paths per wiki, and unique active sibling slugs —
+  while letting tombstones free their paths for reuse.
+- **`node_revisions`** — immutable history: the complete semantic state of a
+  node after each commit that touched it (parent, slug, title, content,
+  metadata, deleted). Historical hierarchy is defined by `parent_id + slug`;
+  materialized paths are **not** stored historically.
+
+`nodes_fts` is a derived FTS5 projection over current active paths, titles,
+and content, updated inside the same transaction as every mutation. It is
+replaceable; the architecture allows future projections (e.g. embeddings)
+without schema changes.
+
+Key invariants: the root node's id *is* the wiki id (`id = wiki_id`,
+`parent_id IS NULL`, `path = ''`); node ids are identity, paths are only
+addresses; every semantic change gets a revision; descendants of a moved node
+keep their revisions (only their derived current paths change).
+
+## Historical state
+
+Any commit id — or any timestamp, resolved to the latest commit at or before
+it — can be expanded into the full wiki state: take each node's latest
+revision at or before the commit, drop nodes whose latest state is deleted,
+and derive paths by walking historical `parent_id + slug` chains. This powers
+`wiki get/tree --commit/--at` and the `wiki.snapshot` API. Current reads
+never touch history; they use the `nodes` projection.
+
+## Concurrency model
+
+- **Node revision ids** are the normal optimistic-concurrency mechanism.
+  Read a node (`--json` includes `revisionId`), edit, write back with
+  `--if-revision`. The write fails with a conflict only if *that node*
+  changed; unrelated commits elsewhere in the wiki never conflict.
+- **Wiki commit ids** are snapshot boundaries, not edit guards. For unusually
+  destructive operations (recursive deletion) `--if-commit` additionally
+  asserts the whole wiki is unchanged since it was inspected.
+
+All mutations run in a single `BEGIN IMMEDIATE` SQLite transaction inside
+`wiki-kit`: validation, conflict checks, commit + revision creation,
+current-state update, and FTS update either all succeed or all roll back.
+
+## Testing
+
+```bash
+pnpm test                      # everything
+pnpm --filter wiki-kit test    # one package
+```
+
+- `wiki-kit`: exhaustive domain tests against real in-memory SQLite (no SQL
+  mocks) — creation, hierarchy, no-ops, revisions, conflicts, moves, deletes,
+  tombstones, snapshots, FTS, rollback.
+- `wiki-api`: auth, authorization, path resolution, error mapping, actor
+  propagation (via Fastify injection).
+- `wiki-sdk`: against a real API server over real sockets.
+- `wiki-cli`: end-to-end — the real binary against a real API + SQLite file,
+  including the safe agent-edit/conflict workflow.
+- `wiki-skills`: verifies SKILL.md against the actual CLI command definitions.
+- `wiki-web`: safe-Markdown renderer unit tests.

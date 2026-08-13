@@ -1,0 +1,115 @@
+/**
+ * Small, safe Markdown renderer for wiki-web.
+ *
+ * All input is HTML-escaped before any markup is generated, so raw
+ * HTML in documents is displayed as text, never executed. Supports
+ * headings, paragraphs, fenced code, inline code, bold, italic,
+ * links (http/https/mailto/relative only), lists, blockquotes, and
+ * horizontal rules.
+ */
+
+function escapeHtml (text) {
+  return text
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+function safeHref (url) {
+  const trimmed = url.trim()
+  if (/^(https?:|mailto:)/i.test(trimmed)) return trimmed
+  if (/^(#|\/|\.\/|\.\.\/)/.test(trimmed)) return trimmed
+  return null
+}
+
+function inline (raw) {
+  let text = escapeHtml(raw)
+  text = text.replace(/`([^`]+)`/g, (match, code) => `<code>${code}</code>`)
+  text = text.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (match, label, url) => {
+    const href = safeHref(url)
+    if (!href) return label
+    return `<a href="${escapeHtml(href)}" rel="noopener noreferrer">${label}</a>`
+  })
+  text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+  text = text.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>')
+  return text
+}
+
+/**
+ * @param {string} source Markdown text
+ * @returns {string} sanitized HTML
+ */
+export function renderMarkdown (source) {
+  const lines = (source || '').split('\n')
+  const html = []
+  let index = 0
+
+  while (index < lines.length) {
+    const line = lines[index]
+
+    if (line.trim() === '') { index += 1; continue }
+
+    if (/^```/.test(line)) {
+      const block = []
+      index += 1
+      while (index < lines.length && !/^```/.test(lines[index])) {
+        block.push(lines[index])
+        index += 1
+      }
+      index += 1 // closing fence
+      html.push(`<pre><code>${escapeHtml(block.join('\n'))}</code></pre>`)
+      continue
+    }
+
+    const heading = line.match(/^(#{1,6})\s+(.*)$/)
+    if (heading) {
+      const level = heading[1].length
+      html.push(`<h${level}>${inline(heading[2])}</h${level}>`)
+      index += 1
+      continue
+    }
+
+    if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) {
+      html.push('<hr>')
+      index += 1
+      continue
+    }
+
+    if (/^>\s?/.test(line)) {
+      const block = []
+      while (index < lines.length && /^>\s?/.test(lines[index])) {
+        block.push(lines[index].replace(/^>\s?/, ''))
+        index += 1
+      }
+      html.push(`<blockquote>${inline(block.join(' '))}</blockquote>`)
+      continue
+    }
+
+    const unordered = /^\s*[-*+]\s+/
+    const ordered = /^\s*\d+\.\s+/
+    if (unordered.test(line) || ordered.test(line)) {
+      const isOrdered = ordered.test(line)
+      const marker = isOrdered ? ordered : unordered
+      const items = []
+      while (index < lines.length && marker.test(lines[index])) {
+        items.push(`<li>${inline(lines[index].replace(marker, ''))}</li>`)
+        index += 1
+      }
+      const tag = isOrdered ? 'ol' : 'ul'
+      html.push(`<${tag}>${items.join('')}</${tag}>`)
+      continue
+    }
+
+    const paragraph = []
+    while (index < lines.length && lines[index].trim() !== '' &&
+           !/^(#{1,6}\s|```|>|\s*[-*+]\s|\s*\d+\.\s)/.test(lines[index])) {
+      paragraph.push(lines[index].trim())
+      index += 1
+    }
+    html.push(`<p>${inline(paragraph.join(' '))}</p>`)
+  }
+
+  return html.join('\n')
+}

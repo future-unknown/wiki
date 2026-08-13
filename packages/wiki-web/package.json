@@ -1,0 +1,17 @@
+{
+  "name": "wiki-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "waterfront web UI: minimal read-oriented browser for humans",
+  "type": "module",
+  "scripts": {
+    "test": "mocha test/**/*.test.js"
+  },
+  "dependencies": {
+    "wiki-sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "mocha": "^11.7.1",
+    "should": "^13.2.3"
+  }
+}

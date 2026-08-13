@@ -1,0 +1,15 @@
+{
+  "name": "wiki-skills",
+  "version": "0.1.0",
+  "private": true,
+  "description": "waterfront agent skill: teaches agents safe use of the wiki CLI",
+  "type": "module",
+  "scripts": {
+    "test": "mocha test/**/*.test.js"
+  },
+  "devDependencies": {
+    "mocha": "^11.7.1",
+    "should": "^13.2.3",
+    "wiki-cli": "workspace:*"
+  }
+}
