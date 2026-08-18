@@ -1,18 +1,45 @@
 {
-  "name": "waterfront",
-  "version": "0.1.0",
+  "name": "wiki",
+  "version": "0.2.0",
   "private": true,
-  "description": "waterfront — a shared wiki for agents and humans",
+  "description": "A shared wiki for agents and humans",
   "type": "module",
   "engines": {
     "node": ">=22"
   },
+  "bin": {
+    "wiki": "./bin/wiki"
+  },
+  "exports": {
+    "./kit": "./lib/kit/index.js",
+    "./api": "./lib/api/index.js",
+    "./sdk": "./lib/sdk/index.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "web",
+    "SKILL.md"
+  ],
   "scripts": {
-    "test": "pnpm -r --workspace-concurrency=1 test",
-    "dev:api": "node packages/wiki-api/bin/serve.js",
-    "dev:web": "node packages/wiki-web/bin/serve.js"
+    "test": "mocha --timeout 20000 'test/**/*.test.js'",
+    "dev:api": "node scripts/dev-api.js",
+    "dev:web": "node web/serve.js"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  },
+  "peerDependencies": {
+    "better-sqlite3": "^12.2.0 || ^13.0.0"
+  },
+  "peerDependenciesMeta": {
+    "better-sqlite3": {
+      "optional": true
+    }
   },
   "devDependencies": {
-    "wiki-cli": "workspace:*"
+    "better-sqlite3": "^12.2.0",
+    "mocha": "^11.7.1",
+    "should": "^13.2.3"
   }
 }

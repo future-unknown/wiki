@@ -1,4 +1,4 @@
-# waterfront
+# wiki
 
 A shared wiki for agents and humans. Agents read and write through a CLI;
 humans browse through a web interface. Every mutation is recorded forever,
@@ -30,37 +30,76 @@ children at the same time — there is no file-vs-directory distinction.
 
 ## Architecture
 
+wiki is a single library with strictly layered modules:
+
 ```text
-wiki-cli ────────┐
+lib/cli ─────────┐
                  ▼
-              wiki-sdk
+              lib/sdk
                  ▲
                  │
-wiki-web ────────┘
+web ─────────────┘
                  │
                  ▼
-              wiki-api
+              lib/api
                  │
                  ▼
-              wiki-kit
+              lib/kit
                  │
                  ▼
                SQLite
 
-wiki-skills teaches agents how to use wiki-cli
+SKILL.md teaches agents how to use the wiki CLI
 ```
 
-| package | responsibility |
-|---|---|
-| `wiki-kit` | The domain core. All SQL, schema/migrations, transactions, path validation, hierarchy, revisions, commits, optimistic concurrency, historical reconstruction, the FTS search projection, and domain errors. The database connection is injected; wiki-kit never owns its lifecycle. |
-| `wiki-api` | Thin HTTP layer: a single JSON-RPC 2.0 endpoint (`POST /rpc`), pluggable authentication/authorization, transport validation, error mapping, and trusted actor context. No SQL, no domain rules. |
-| `wiki-sdk` | Environment-neutral client for Node.js and browsers. Depends only on `fetch` (injectable). Hides JSON-RPC, maps API errors to typed error classes. No domain logic. |
-| `wiki-cli` | The `wiki` executable. Talks only to the API through the SDK. |
-| `wiki-web` | Minimal read-oriented browser UI (tree, safe Markdown rendering, search, history). Uses the SDK; never touches the database. |
-| `wiki-skills` | An agent skill (`SKILL.md`) teaching safe CLI behavior, with tests that verify it against the actual command definitions. |
+| module | export | responsibility |
+|---|---|---|
+| `lib/kit` | `wiki/kit` | The domain core. All SQL, schema/migrations, transactions, path validation, hierarchy, revisions, commits, optimistic concurrency, historical reconstruction, the FTS search projection, and domain errors. The database connection is injected; the kit never owns its lifecycle. |
+| `lib/api` | `wiki/api` | The API layer, two doors over one set of rules: `createWikiMethods({ kit, auth })` is a transport-neutral JSON-RPC method table for embedding in a host's RPC server; `createWikiRouter({ kit, auth })` is an `express.Router` exposing it at `POST /rpc`. Owns auth hooks, transport validation, and error mapping. No SQL, no domain rules. |
+| `lib/sdk` | `wiki/sdk` | Environment-neutral client for Node.js and browsers. Depends only on `fetch` (injectable). Hides JSON-RPC, maps API errors to typed error classes. No domain logic. |
+| `lib/cli` | `bin/wiki` | The `wiki` executable. Talks only to the API through the SDK. |
+| `web/` | — | Minimal read-oriented browser UI (tree, safe Markdown rendering, search, history). Uses the SDK; never touches the database. |
+| `SKILL.md` | — | An agent skill teaching safe CLI behavior, verified against the actual command definitions by tests. |
 
-Boundaries are architectural requirements: SQL never escapes `wiki-kit`;
-auth never enters it; CLI and web never bypass the API/SDK.
+Boundaries are architectural requirements: SQL never escapes `lib/kit`;
+auth never enters it; CLI and web never bypass the API/SDK. With a single
+package there is no installer-level isolation, so
+`test/boundaries.test.js` walks the import graph and fails the suite on
+any violation. Only `wiki/kit`, `wiki/api`, and
+`wiki/sdk` are exported; internals are unreachable from outside.
+
+`better-sqlite3` is an optional peer dependency: the embedding
+application owns the connection (the `openDatabase` helper in
+`wiki/api` uses it, but nothing else does), so SDK-only consumers
+never need the native module.
+
+## Embedding
+
+```js
+import express from 'express'
+import { createWikiKit } from 'wiki/kit'
+import { createWikiRouter, openDatabase, createStaticTokenAuth } from 'wiki/api'
+
+const db = openDatabase('var/wiki.db')
+const kit = createWikiKit({ db })
+await kit.migrate()
+
+const app = express()
+app.use(createWikiRouter({ kit, auth: myAuth }))   // POST /rpc, GET /health
+app.listen(3000)
+```
+
+Hosts with their own RPC server and guard skip the router and mount the
+method table directly:
+
+```js
+import { createWikiMethods } from 'wiki/api'
+
+const methods = createWikiMethods({ kit })          // host authorizes calls itself
+for (const [name, handler] of Object.entries(methods)) {
+  rpcServer.addMethod(name, (params) => handler(principalFor(request), params))
+}
+```
 
 ## Development
 
@@ -68,7 +107,7 @@ Requires Node.js 22+ and pnpm.
 
 ```bash
 pnpm install
-pnpm test        # full suite, all packages
+pnpm test        # full suite
 
 pnpm dev:api     # API on :3000 (WIKI_DB, WIKI_DEV_TOKEN, PORT to override)
 pnpm dev:web     # web UI on :3001 (WEB_PORT to override)
@@ -80,13 +119,13 @@ Then, in another shell:
 export WIKI_URL=http://localhost:3000
 export WIKI_TOKEN=dev-token
 
-wiki set acme "This is the Acme wiki"       # creates the wiki
-wiki set acme.about.foo "Foo"               # intermediate nodes auto-created
-wiki tree acme
+./bin/wiki set acme "This is the Acme wiki"       # creates the wiki
+./bin/wiki set acme.about.foo "Foo"               # wiki + intermediate nodes auto-created as needed
+./bin/wiki tree acme
 ```
 
-(`wiki` is linked into `node_modules/.bin` at the workspace root; use
-`./node_modules/.bin/wiki` or add it to your PATH.)
+(Installed as a dependency, the binary is linked as `wiki` in
+`node_modules/.bin`.)
 
 Open `http://localhost:3001`, and connect with the same URL/token via the ⚙
 settings panel to browse.
@@ -114,7 +153,7 @@ stdout carries only requested data; errors go to stderr.
 
 ## Database model
 
-Three central tables, all owned by `wiki-kit`:
+Three central tables, all owned by `lib/kit`:
 
 - **`commits`** — one row per atomic wiki mutation (integer autoincrement id,
   wiki id, trusted actor identity, message, UTC timestamp). A commit is a
@@ -160,23 +199,26 @@ never touch history; they use the `nodes` projection.
   asserts the whole wiki is unchanged since it was inspected.
 
 All mutations run in a single `BEGIN IMMEDIATE` SQLite transaction inside
-`wiki-kit`: validation, conflict checks, commit + revision creation,
+`lib/kit`: validation, conflict checks, commit + revision creation,
 current-state update, and FTS update either all succeed or all roll back.
 
 ## Testing
 
 ```bash
-pnpm test                      # everything
-pnpm --filter wiki-kit test    # one package
+pnpm test                        # everything
+npx mocha 'test/kit/*.test.js'   # one area
 ```
 
-- `wiki-kit`: exhaustive domain tests against real in-memory SQLite (no SQL
+- `test/kit/`: exhaustive domain tests against real in-memory SQLite (no SQL
   mocks) — creation, hierarchy, no-ops, revisions, conflicts, moves, deletes,
   tombstones, snapshots, FTS, rollback.
-- `wiki-api`: auth, authorization, path resolution, error mapping, actor
-  propagation (via Fastify injection).
-- `wiki-sdk`: against a real API server over real sockets.
-- `wiki-cli`: end-to-end — the real binary against a real API + SQLite file,
-  including the safe agent-edit/conflict workflow.
-- `wiki-skills`: verifies SKILL.md against the actual CLI command definitions.
-- `wiki-web`: safe-Markdown renderer unit tests.
+- `test/api.test.js`: auth, authorization, path resolution, error mapping,
+  actor propagation, and the transport-neutral method table, over real HTTP.
+- `test/sdk.test.js`: the client against a real API server over real sockets.
+- `test/cli/`: end-to-end — the real `bin/wiki` binary against a real API +
+  SQLite file, including the safe agent-edit/conflict workflow.
+- `test/skill.test.js`: verifies SKILL.md against the actual CLI command
+  definitions.
+- `test/markdown.test.js`: safe-Markdown renderer unit tests.
+- `test/boundaries.test.js`: walks the import graph and enforces the layer
+  boundaries described above.

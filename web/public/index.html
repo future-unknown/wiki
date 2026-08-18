@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>wiki</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <select id="wiki-select" aria-label="wiki"></select>
+    <form id="search-form">
+      <input id="search-input" type="search" placeholder="search this wiki…" autocomplete="off">
+    </form>
+    <button id="settings-toggle" type="button" title="connection settings">⚙</button>
+  </header>
+
+  <section id="settings" hidden>
+    <form id="settings-form">
+      <label>API URL <input id="setting-url" placeholder="http://localhost:3000"></label>
+      <label>Token <input id="setting-token" type="password" placeholder="dev-token"></label>
+      <label>Wiki <input id="setting-wiki" placeholder="acme"></label>
+      <button type="submit">connect</button>
+    </form>
+  </section>
+
+  <main>
+    <nav id="tree" aria-label="wiki tree"></nav>
+    <article id="page">
+      <div id="page-meta" hidden>
+        <h2 id="page-title"></h2>
+        <code id="page-path"></code>
+        <button id="history-toggle" type="button">history</button>
+      </div>
+      <div id="search-results" hidden></div>
+      <div id="history" hidden></div>
+      <div id="content"><p class="hint">connect to a wiki to start browsing</p></div>
+    </article>
+  </main>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
