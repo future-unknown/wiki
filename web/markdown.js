@@ -24,9 +24,21 @@ function safeHref (url) {
   return null
 }
 
+// [[path]] / [[path|label]] — org-relative wiki page links. Rendered as
+// anchors carrying data-wikilink; the app resolves them against the
+// current wiki. Code spans are exempt so docs about the syntax stay text.
+const WIKILINK = /\[\[([a-z0-9][a-z0-9_-]*(?:\.[a-z0-9][a-z0-9_-]*)*)(?:\|([^\]|]+))?\]\]/g
+
 function inline (raw) {
   let text = escapeHtml(raw)
   text = text.replace(/`([^`]+)`/g, (match, code) => `<code>${code}</code>`)
+  text = text
+    .split(/(<code>[\s\S]*?<\/code>)/)
+    .map((part) => part.startsWith('<code>')
+      ? part
+      : part.replace(WIKILINK, (match, path, label) =>
+        `<a href="#" data-wikilink="${path}">${(label || path).trim()}</a>`))
+    .join('')
   text = text.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (match, label, url) => {
     const href = safeHref(url)
     if (!href) return label

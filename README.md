@@ -142,6 +142,11 @@ wiki move <from> <to>        # subtree moves, identity preserved
 wiki rm <path>               # --recursive for subtrees, --if-commit for safety
 ```
 
+Pages link to each other with wikilinks — `[[docs.cli]]` or
+`[[docs.cli|the CLI guide]]` — org-relative dot-paths in plain text.
+The system never parses them; reading surfaces render them as
+navigation, and search finds referring pages by the target's path.
+
 Tree children order alphabetically by slug, except siblings carrying a
 numeric `order` in their metadata, which sort first, ascending — set it
 with `--metadata '{"order":1}'` (or via the API) to pin sections to the

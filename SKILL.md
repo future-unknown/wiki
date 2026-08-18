@@ -147,6 +147,18 @@ wiki rm acme.scratch
 wiki rm acme.old-section --recursive --if-commit 57
 ```
 
+## Linking between pages
+
+Link pages with wikilinks: `[[architecture.deployment]]`, or labeled,
+`[[docs.cli|the CLI guide]]`. Paths are the same org-relative dot-paths
+used everywhere else. Wikilinks are plain text to the system — write them
+anywhere in page content; reading surfaces render them as navigation.
+
+After moving a page, links pointing at its old path still say the old
+path. Find them with `wiki search "<old.path>"` and update each referring
+page (with `--if-revision`, as always). That same search also answers
+"what links here?" for any page.
+
 ## Exit codes
 
 | code | meaning |

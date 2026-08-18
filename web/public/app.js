@@ -205,6 +205,12 @@ elements.historyToggle.addEventListener('click', () => {
 })
 
 document.addEventListener('click', (event) => {
+  const wikilink = event.target.closest('a[data-wikilink]')
+  if (wikilink) {
+    event.preventDefault()
+    openNode(config.wiki + '.' + wikilink.dataset.wikilink).catch(showError)
+    return
+  }
   const link = event.target.closest('a[data-path], #search-results a')
   if (!link) return
   event.preventDefault()

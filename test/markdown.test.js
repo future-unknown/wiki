@@ -36,6 +36,14 @@ describe('renderMarkdown', () => {
     bad.should.containEql('evil')
   })
 
+  it('renders wikilinks outside code spans', () => {
+    const html = renderMarkdown('See [[docs.cli|the guide]] and [[roadmap]], not `[[docs.cli]]`.')
+    html.should.containEql('<a href="#" data-wikilink="docs.cli">the guide</a>')
+    html.should.containEql('<a href="#" data-wikilink="roadmap">roadmap</a>')
+    html.should.containEql('<code>[[docs.cli]]</code>')
+    renderMarkdown('[[Not.Valid]]').should.not.containEql('data-wikilink')
+  })
+
   it('handles empty input', () => {
     renderMarkdown('').should.equal('')
     renderMarkdown(undefined).should.equal('')
