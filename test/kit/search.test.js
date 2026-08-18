@@ -98,6 +98,19 @@ describe('getTree (current)', () => {
     tree.children[0].children.map((child) => child.slug).should.deepEqual(['bar', 'baz', 'foo'])
   })
 
+  it('orders children by metadata.order before alphabetical', async () => {
+    const { kit } = await createTestKit()
+    const { wikiId } = await seedAcme(kit)
+    await kit.setNode({ wikiId, path: 'zebra', content: 'z', actor: human })
+    await kit.setNode({ wikiId, path: 'zebra', metadata: { order: 1 }, actor: human })
+    const tree = await kit.getTree({ wikiId })
+    tree.children.map((child) => child.slug).should.deepEqual(['zebra', 'about'])
+    // non-numeric order values fall back to alphabetical
+    await kit.setNode({ wikiId, path: 'about', metadata: { order: 'first' }, actor: human })
+    const after = await kit.getTree({ wikiId })
+    after.children.map((child) => child.slug).should.deepEqual(['zebra', 'about'])
+  })
+
   it('supports subtree roots and depth limits', async () => {
     const { kit } = await createTestKit()
     const { wikiId } = await seedAcme(kit)
