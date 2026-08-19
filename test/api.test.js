@@ -196,6 +196,35 @@ describe('wiki-api', () => {
     })
   })
 
+  describe('wiki.note / wiki.notes / wiki.resolveNote', () => {
+    it('adds, lists, and resolves notes with the session actor', async () => {
+      const { rpc } = await createTestApi()
+      await rpc('wiki.set', { path: 'acme.doc', content: 'v1' })
+
+      const added = await rpc('wiki.note', { path: 'acme.doc', body: 'Needs a diagram.' }, 'agent-token')
+      added.result.author.should.deepEqual({ type: 'agent', id: 'agent_9', onBehalfOf: 'user_123' })
+      added.result.fullPath.should.equal('acme.doc')
+
+      const listed = await rpc('wiki.notes', { path: 'acme.doc' }, 'read-token')
+      listed.result.length.should.equal(1)
+
+      const resolved = await rpc('wiki.resolveNote', { path: 'acme.doc', noteId: added.result.id })
+      resolved.result.resolvedBy.should.deepEqual({ type: 'human', id: 'user_123' })
+
+      const open = await rpc('wiki.notes', { path: 'acme.doc' })
+      open.result.length.should.equal(0)
+      const all = await rpc('wiki.notes', { path: 'acme.doc', includeResolved: true })
+      all.result.length.should.equal(1)
+    })
+
+    it('requires write access to add or resolve', async () => {
+      const { rpc } = await createTestApi()
+      await rpc('wiki.set', { path: 'acme.doc', content: 'v1' })
+      const denied = await rpc('wiki.note', { path: 'acme.doc', body: 'x' }, 'read-token')
+      denied.error.data.code.should.equal('UNAUTHORIZED')
+    })
+  })
+
   describe('wiki.list', () => {
     it('lists wikis for any authenticated reader', async () => {
       const { rpc } = await createTestApi()

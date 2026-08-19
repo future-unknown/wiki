@@ -78,6 +78,13 @@ describe('wiki-sdk', () => {
 
     const wikis = await client.list()
     wikis.map((wiki) => wiki.slug).should.deepEqual(['acme'])
+
+    const note = await client.note('acme.foo', 'needs work')
+    const notes = await client.notes('acme.foo')
+    notes.map((entry) => entry.body).should.deepEqual(['needs work'])
+    const done = await client.resolveNote('acme.foo', note.id)
+    done.resolvedBy.id.should.equal('sdk_test')
+    ;(await client.notes('acme.foo')).length.should.equal(0)
   })
 
   it('supports optimistic concurrency through expectedRevisionId', async () => {

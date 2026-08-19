@@ -142,6 +142,12 @@ wiki move <from> <to>        # subtree moves, identity preserved
 wiki rm <path>               # --recursive for subtrees, --if-commit for safety
 ```
 
+Pages take **notes** — append-only feedback attached to the page's
+identity (notes survive moves), outside the commit model so they never
+conflict with content edits. Add, list, and resolve them through the
+API/SDK (`wiki.note`, `wiki.notes`, `wiki.resolveNote`); resolution is
+idempotent and audited.
+
 Pages link to each other with wikilinks — `[[docs.cli]]` or
 `[[docs.cli|the CLI guide]]` — org-relative dot-paths in plain text.
 The system never parses them; reading surfaces render them as
