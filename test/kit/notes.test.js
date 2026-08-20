@@ -77,6 +77,46 @@ describe('notes', () => {
       .should.be.rejectedWith(NotFoundError)
   })
 
+  it('lists a subtree of notes as a queue ordered by page then age', async () => {
+    const { kit } = await createTestKit()
+    const { wikiId } = await seedAcme(kit)
+    await kit.addNote({ wikiId, path: 'about.foo', body: 'foo note', actor: human })
+    await kit.addNote({ wikiId, path: 'about.bar', body: 'bar note one', actor: human })
+    await kit.addNote({ wikiId, path: 'about.bar', body: 'bar note two', actor: agent })
+    await kit.addNote({ wikiId, path: 'about', body: 'section note', actor: human })
+
+    const queue = await kit.listNotes({ wikiId, path: 'about', subtree: true })
+    queue.map((note) => [note.path, note.body]).should.deepEqual([
+      ['about', 'section note'],
+      ['about.bar', 'bar note one'],
+      ['about.bar', 'bar note two'],
+      ['about.foo', 'foo note']
+    ])
+
+    // whole-wiki queue is the root subtree
+    const all = await kit.listNotes({ wikiId, path: '', subtree: true })
+    all.length.should.equal(4)
+
+    // exact-page listing is unchanged and carries the page path
+    const exact = await kit.listNotes({ wikiId, path: 'about.bar' })
+    exact.map((note) => note.path).should.deepEqual(['about.bar', 'about.bar'])
+  })
+
+  it('keeps the queue current across moves and deletes', async () => {
+    const { kit } = await createTestKit()
+    const { wikiId } = await seedAcme(kit)
+    await kit.addNote({ wikiId, path: 'about.foo', body: 'moving note', actor: human })
+    await kit.addNote({ wikiId, path: 'about.baz', body: 'doomed note', actor: human })
+
+    await kit.moveNode({ wikiId, fromPath: 'about.foo', toPath: 'about.renamed', actor: human })
+    await kit.deleteNode({ wikiId, path: 'about.baz', actor: human })
+
+    const queue = await kit.listNotes({ wikiId, path: '', subtree: true })
+    queue.map((note) => [note.path, note.body]).should.deepEqual([
+      ['about.renamed', 'moving note']
+    ])
+  })
+
   it('scopes note lookups to the page', async () => {
     const { kit } = await createTestKit()
     const { wikiId } = await seedAcme(kit)

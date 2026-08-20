@@ -217,6 +217,17 @@ describe('wiki-api', () => {
       all.result.length.should.equal(1)
     })
 
+    it('lists a subtree queue with per-note full paths', async () => {
+      const { rpc } = await createTestApi()
+      await rpc('wiki.set', { path: 'acme.docs.a', content: 'a' })
+      await rpc('wiki.set', { path: 'acme.docs.b', content: 'b' })
+      await rpc('wiki.note', { path: 'acme.docs.a', body: 'note a' })
+      await rpc('wiki.note', { path: 'acme.docs.b', body: 'note b' })
+
+      const queue = await rpc('wiki.notes', { path: 'acme', subtree: true })
+      queue.result.map((note) => note.fullPath).should.deepEqual(['acme.docs.a', 'acme.docs.b'])
+    })
+
     it('requires write access to add or resolve', async () => {
       const { rpc } = await createTestApi()
       await rpc('wiki.set', { path: 'acme.doc', content: 'v1' })
