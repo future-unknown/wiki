@@ -201,6 +201,45 @@ describe('wiki CLI (end to end)', () => {
     })
   })
 
+  describe('push and data', () => {
+    it('pushes inline JSON and reads the latest observation back', async () => {
+      await wiki(['set', 'acme.usage', 'Daily API usage.'])
+      const pushed = await wiki(['push', 'acme.usage', '{"requests": 1042}', '--json'])
+      pushed.code.should.equal(0, pushed.stderr)
+      JSON.parse(pushed.stdout).payload.should.deepEqual({ requests: 1042 })
+
+      const latest = await wiki(['data', 'acme.usage', '--latest', '--json'])
+      latest.code.should.equal(0, latest.stderr)
+      const parsed = JSON.parse(latest.stdout)
+      parsed.fullPath.should.equal('acme.usage')
+      parsed.rows.length.should.equal(1)
+      parsed.rows[0].payload.should.deepEqual({ requests: 1042 })
+      parsed.rows[0].should.have.properties('id', 'ts', 'actor', 'createdAt')
+    })
+
+    it('pushes from stdin and renders a human listing', async () => {
+      const result = await wiki(['push', 'acme.usage', '--ts', '2020-01-01T00:00:00Z'],
+        { stdin: '{"requests": 1}\n' })
+      result.code.should.equal(0, result.stderr)
+      result.stderr.should.containEql('pushed to acme.usage')
+
+      const listed = await wiki(['data', 'acme.usage', '--until', '2020-06-01T00:00:00Z'])
+      listed.code.should.equal(0)
+      listed.stdout.should.containEql('2020-01-01T00:00:00.000Z  {"requests":1}')
+    })
+
+    it('rejects invalid payloads and read-option combinations, exit code 2', async () => {
+      (await wiki(['push', 'acme.usage', 'not json'])).code.should.equal(2)
+      ;(await wiki(['push', 'acme.usage'])).code.should.equal(2)
+      ;(await wiki(['data', 'acme.usage', '--latest', '--limit', '5'])).code.should.equal(2)
+    })
+
+    it('exits 3 for a missing page', async () => {
+      (await wiki(['push', 'acme.nope', '1'])).code.should.equal(3)
+      ;(await wiki(['data', 'acme.nope'])).code.should.equal(3)
+    })
+  })
+
   describe('exit codes and errors', () => {
     it('exits 3 for missing nodes', async () => {
       (await wiki(['get', 'acme.nope'])).code.should.equal(3)

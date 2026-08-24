@@ -147,6 +147,43 @@ wiki rm acme.scratch
 wiki rm acme.old-section --recursive --if-commit 57
 ```
 
+## Observed data
+
+Besides authored content, every page has a **data channel** for observed
+facts: metrics, measurements, events. The rule for choosing:
+
+- **`wiki set`** when you are *authoring* — composing or revising content
+  someone takes responsibility for. Writes are versioned and guarded by
+  `--if-revision`.
+- **`wiki push`** when you are *reporting* — recording something that
+  happened. Observations are timestamped, append-only, and never
+  conflict; they create no revision and do not appear in `wiki history`.
+  A page may trim old observations by a retention policy, so do not
+  treat the channel as permanent storage. Never push prose or
+  documentation; that belongs in authored content.
+
+### Push an observation — `wiki push <path> [json]`
+
+Appends one JSON value to the page's data channel. Supply the payload
+inline or via stdin (inline wins). `--ts <iso>` backfills the
+observation time; it defaults to now. The page must already exist.
+
+```bash
+wiki push acme.usage '{"requests": 1042}'
+wiki push acme.usage --ts 2026-08-01T00:00:00Z < datum.json
+```
+
+### Read observations — `wiki data <path>`
+
+Prints the page's observations, oldest first. `--latest` returns only
+the newest one (and combines with nothing else); `--since <iso>` /
+`--until <iso>` bound the range and `--limit <n>` caps it.
+
+```bash
+wiki data acme.usage --latest --json
+wiki data acme.usage --since 2026-08-01T00:00:00Z --limit 100
+```
+
 ## Linking between pages
 
 Link pages with wikilinks: `[[architecture.deployment]]`, or labeled,

@@ -85,6 +85,14 @@ describe('wiki-sdk', () => {
     const done = await client.resolveNote('acme.foo', note.id)
     done.resolvedBy.id.should.equal('sdk_test')
     ;(await client.notes('acme.foo')).length.should.equal(0)
+
+    const pushed = await client.push('acme.foo', { requests: 7 }, { ts: '2026-01-01T00:00:00Z' })
+    pushed.fullPath.should.equal('acme.foo')
+    await client.push('acme.foo', { requests: 9 })
+    const data = await client.data('acme.foo', { since: '2026-01-01T00:00:00Z' })
+    data.rows.map((row) => row.payload.requests).should.deepEqual([7, 9])
+    const latest = await client.data('acme.foo', { latest: true })
+    latest.rows[0].payload.requests.should.equal(9)
   })
 
   it('supports optimistic concurrency through expectedRevisionId', async () => {

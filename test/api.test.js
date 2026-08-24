@@ -15,7 +15,8 @@ async function createTestApi () {
     tokens: {
       'human-token': { actor: { type: 'human', id: 'user_123', onBehalfOf: null } },
       'agent-token': { actor: { type: 'agent', id: 'agent_9', onBehalfOf: 'user_123' } },
-      'read-token': { actor: { type: 'human', id: 'reader', onBehalfOf: null }, allow: ['wiki:read'] }
+      'read-token': { actor: { type: 'human', id: 'reader', onBehalfOf: null }, allow: ['wiki:read'] },
+      'push-token': { actor: { type: 'agent', id: 'meter_1', onBehalfOf: null }, allow: ['wiki:push'] }
     }
   })
   const app = express()
@@ -233,6 +234,53 @@ describe('wiki-api', () => {
       await rpc('wiki.set', { path: 'acme.doc', content: 'v1' })
       const denied = await rpc('wiki.note', { path: 'acme.doc', body: 'x' }, 'read-token')
       denied.error.data.code.should.equal('UNAUTHORIZED')
+    })
+  })
+
+  describe('wiki.push / wiki.data', () => {
+    it('pushes observations and reads them back with full paths', async () => {
+      const { rpc } = await createTestApi()
+      await rpc('wiki.set', { path: 'acme.usage', content: 'API usage.' })
+
+      const pushed = await rpc('wiki.push', {
+        path: 'acme.usage', payload: { requests: 1042 }
+      }, 'agent-token')
+      pushed.result.fullPath.should.equal('acme.usage')
+      pushed.result.payload.should.deepEqual({ requests: 1042 })
+      pushed.result.actor.should.deepEqual({ type: 'agent', id: 'agent_9', onBehalfOf: 'user_123' })
+
+      const read = await rpc('wiki.data', { path: 'acme.usage', latest: true }, 'read-token')
+      read.result.fullPath.should.equal('acme.usage')
+      read.result.rows.length.should.equal(1)
+      read.result.rows[0].payload.should.deepEqual({ requests: 1042 })
+    })
+
+    it('scopes a push-only token to pushing', async () => {
+      const { rpc } = await createTestApi()
+      await rpc('wiki.set', { path: 'acme.usage', content: 'API usage.' })
+
+      const pushed = await rpc('wiki.push', { path: 'acme.usage', payload: 1 }, 'push-token')
+      pushed.result.payload.should.equal(1)
+      const write = await rpc('wiki.set', { path: 'acme.usage', content: 'x' }, 'push-token')
+      write.error.data.code.should.equal('UNAUTHORIZED')
+      const read = await rpc('wiki.data', { path: 'acme.usage' }, 'push-token')
+      read.error.data.code.should.equal('UNAUTHORIZED')
+    })
+
+    it('keeps writing and pushing distinct actions', async () => {
+      const { rpc } = await createTestApi()
+      await rpc('wiki.set', { path: 'acme.usage', content: 'API usage.' })
+      const denied = await rpc('wiki.push', { path: 'acme.usage', payload: 1 }, 'read-token')
+      denied.error.data.code.should.equal('UNAUTHORIZED')
+    })
+
+    it('maps validation and not-found errors', async () => {
+      const { rpc } = await createTestApi()
+      await rpc('wiki.set', { path: 'acme.usage', content: 'API usage.' })
+      const missing = await rpc('wiki.push', { path: 'acme.nope', payload: 1 })
+      missing.error.data.code.should.equal('NOT_FOUND')
+      const invalid = await rpc('wiki.data', { path: 'acme.usage', latest: true, limit: 5 })
+      invalid.error.data.code.should.equal('VALIDATION_ERROR')
     })
   })
 

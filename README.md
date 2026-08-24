@@ -1,18 +1,19 @@
 # wiki
 
 A shared wiki for agents and humans. Agents read and write through a CLI;
-humans browse through a web interface. Every mutation is recorded forever,
-and the entire wiki can be reconstructed exactly as it was at any point in
-its history.
+humans browse through a web interface. Every authored mutation is recorded
+forever, and all authored content can be reconstructed exactly as it was
+at any point in its history.
 
 ```text
 Everything is a node.
 Every node has a stable identity.
 Nodes form a tree.
 Paths address nodes.
-Every mutation creates an immutable node revision.
+The wiki versions what is authored and timestamps what is observed.
+Every authored mutation creates an immutable node revision.
 Every atomic mutation belongs to a wiki-wide commit.
-A commit defines the complete state of the wiki at that point.
+A commit defines the complete authored state of the wiki at that point.
 The current nodes table is a fast projection of that history.
 ```
 
@@ -140,6 +141,8 @@ wiki search <path> <query>   # FTS over the subtree; --limit
 wiki history <path>          # revisions, newest first
 wiki move <from> <to>        # subtree moves, identity preserved
 wiki rm <path>               # --recursive for subtrees, --if-commit for safety
+wiki push <path> [json]      # append an observation to a page's data channel
+wiki data <path>             # read observations; --latest, --since/--until, --limit
 ```
 
 Pages take **notes** — append-only feedback attached to the page's
@@ -149,6 +152,19 @@ API/SDK (`wiki.note`, `wiki.notes`, `wiki.resolveNote`); resolution is
 idempotent and audited. `wiki.notes` with `subtree: true` lists the
 queue for a whole section (or the whole wiki from the root), each note
 naming its page's current path.
+
+Pages also carry a **data channel** — the third channel after content
+and notes, and the home of *observed* facts: metrics, measurements,
+events. Observations are appended with `wiki push` (JSON payloads,
+actor-attributed, timestamped, `--ts` for backfill) and read with
+`wiki data`, ascending by observation time. The channel sits outside
+the commit model: appends commute, never conflict, create no revision,
+and are attached to the page's identity, so they survive moves and
+become unreachable with deletion. Unlike everything authored, the
+channel may *forget*: a page's `metadata.data.retain` policy
+(`{"rows": n}` and/or `{"days": n}`) trims old observations on every
+push. Retention configuration is authored intent, so it lives in
+versioned metadata; the observations themselves do not.
 
 Pages link to each other with wikilinks — `[[docs.cli]]` or
 `[[docs.cli|the CLI guide]]` — org-relative dot-paths in plain text.
