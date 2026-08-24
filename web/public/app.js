@@ -3,12 +3,13 @@
  */
 
 import { WikiClient } from '/sdk/index.js'
-import { renderMarkdown } from '/markdown.js'
+import { renderContent, seriesFromRows } from '/views.js'
 
 const elements = {
   wikiSelect: document.getElementById('wiki-select'),
   tree: document.getElementById('tree'),
   content: document.getElementById('content'),
+  dataPanel: document.getElementById('data-panel'),
   pageMeta: document.getElementById('page-meta'),
   pageTitle: document.getElementById('page-title'),
   pagePath: document.getElementById('page-path'),
@@ -71,6 +72,58 @@ async function loadTree () {
   elements.tree.appendChild(list)
 }
 
+const CHART_COLORS = ['#2563eb', '#db8b0b', '#0f9d58', '#b3261e', '#7c3aed', '#0e7490']
+
+function renderDataPanel (node, rows) {
+  elements.dataPanel.hidden = false
+  elements.dataPanel.innerHTML = ''
+
+  const latest = rows[rows.length - 1]
+  const readout = document.createElement('div')
+  readout.className = 'data-latest'
+  const value = document.createElement('code')
+  value.textContent = JSON.stringify(latest.payload)
+  const meta = document.createElement('span')
+  meta.className = 'meta'
+  meta.textContent = ` · ${latest.ts} · ${rows.length} observation(s)`
+  readout.appendChild(value)
+  readout.appendChild(meta)
+  elements.dataPanel.appendChild(readout)
+
+  const { ts, series } = seriesFromRows(rows, node.metadata?.data?.render)
+  const fields = Object.keys(series)
+  if (rows.length < 2 || fields.length === 0 || typeof uPlot !== 'function') return
+
+  const chart = document.createElement('div')
+  chart.className = 'data-chart'
+  elements.dataPanel.appendChild(chart)
+  const width = Math.max(320, elements.dataPanel.clientWidth - 16)
+  new uPlot({
+    width,
+    height: 180,
+    series: [
+      {},
+      ...fields.map((field, index) => ({
+        label: field,
+        stroke: CHART_COLORS[index % CHART_COLORS.length],
+        width: 2
+      }))
+    ]
+  }, [ts, ...fields.map((field) => series[field])], chart)
+}
+
+async function loadData (node) {
+  elements.dataPanel.hidden = true
+  try {
+    const { rows } = await client.data(node.fullPath, { limit: 500 })
+    // The reader may already be on another page by the time this lands.
+    if (selectedPath !== node.fullPath || rows.length === 0) return
+    renderDataPanel(node, rows)
+  } catch {
+    // A page without readable data simply has no panel.
+  }
+}
+
 async function openNode (fullPath) {
   hidePanels()
   const node = await client.get(fullPath)
@@ -78,11 +131,12 @@ async function openNode (fullPath) {
   elements.pageMeta.hidden = false
   elements.pageTitle.textContent = node.title || node.slug
   elements.pagePath.textContent = node.fullPath
-  elements.content.innerHTML = renderMarkdown(node.content) ||
+  elements.content.innerHTML = renderContent(node) ||
     '<p class="hint">(empty page)</p>'
   for (const link of elements.tree.querySelectorAll('a')) {
     link.classList.toggle('selected', link.dataset.path === fullPath)
   }
+  await loadData(node)
 }
 
 async function runSearch (query) {

@@ -23,6 +23,9 @@ function sourceFiles (dir) {
   const absolute = path.join(root, dir)
   return fs.readdirSync(absolute, { recursive: true })
     .filter((file) => file.endsWith('.js'))
+    // Vendored third-party bundles (web/public/vendor) are not our
+    // source; the regex scans here are not written for minified code.
+    .filter((file) => !file.split(path.sep).includes('vendor'))
     .map((file) => path.join(absolute, file))
 }
 

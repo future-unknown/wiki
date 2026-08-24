@@ -184,6 +184,19 @@ wiki data acme.usage --latest --json
 wiki data acme.usage --since 2026-08-01T00:00:00Z --limit 100
 ```
 
+## Typed pages
+
+A page's `metadata.type` declares how reading surfaces render its
+content: `markdown` (the default), `json` (any JSON value), or `table`
+(a JSON array of objects). Typed content is still just content — write
+it with the same safe edit loop:
+
+```bash
+wiki set acme.usage.by-region --metadata '{"type":"table"}' <<'EOF'
+[{"region": "us", "requests": 812}, {"region": "eu", "requests": 230}]
+EOF
+```
+
 ## Linking between pages
 
 Link pages with wikilinks: `[[architecture.deployment]]`, or labeled,

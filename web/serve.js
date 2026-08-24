@@ -25,23 +25,28 @@ const types = {
   '.svg': 'image/svg+xml'
 }
 
+// Shared browser modules that live in web/ itself (outside public/).
+const webModules = ['markdown.js', 'views.js']
+
 function resolveFile (urlPath) {
   if (urlPath.startsWith('/sdk/')) {
     return path.join(sdkDir, path.normalize(urlPath.slice(5)))
   }
-  if (urlPath === '/markdown.js') {
-    return path.join(webDir, 'markdown.js')
+  if (webModules.includes(urlPath.slice(1))) {
+    return path.join(webDir, urlPath.slice(1))
   }
   const file = urlPath === '/' ? '/index.html' : urlPath
   return path.join(publicDir, path.normalize(file))
 }
 
-const roots = [publicDir, sdkDir, webDir]
+const roots = [publicDir, sdkDir]
 
 const server = http.createServer((request, response) => {
   const urlPath = new URL(request.url, 'http://localhost').pathname
   const file = resolveFile(urlPath)
-  if (!roots.some((root) => file.startsWith(root + path.sep) || file === path.join(webDir, 'markdown.js'))) {
+  const allowed = roots.some((root) => file.startsWith(root + path.sep)) ||
+    webModules.some((name) => file === path.join(webDir, name))
+  if (!allowed) {
     response.writeHead(403).end('forbidden')
     return
   }

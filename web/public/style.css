@@ -83,6 +83,16 @@ main { flex: 1; display: flex; min-height: 0; }
 .hint { color: #8a95a1; }
 .error { color: #b3261e; }
 
+#data-panel { margin-bottom: 1rem; padding: 0.8rem; border: 1px solid #dde3ea; border-radius: 8px; background: #fbfcfd; }
+#data-panel .data-latest code { background: #f2f4f7; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.9em; }
+#data-panel .data-latest .meta { color: #6b7683; font-size: 0.8rem; }
+#data-panel .data-chart { margin-top: 0.8rem; }
+
+.data-table { border-collapse: collapse; font-size: 0.88rem; width: 100%; }
+.data-table th, .data-table td { border: 1px solid #dde3ea; padding: 0.35rem 0.6rem; text-align: left; }
+.data-table th { background: #f6f8fa; }
+.data-table tr:nth-child(even) td { background: #fbfcfd; }
+
 #search-results ul, #history ul { list-style: none; padding: 0; margin: 0.4rem 0; }
 #search-results li, #history li { padding: 0.4rem 0.2rem; border-bottom: 1px solid #eef1f4; font-size: 0.88rem; }
 #search-results a { font-weight: 600; text-decoration: none; }

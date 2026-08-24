@@ -8,7 +8,7 @@
  * horizontal rules.
  */
 
-function escapeHtml (text) {
+export function escapeHtml (text) {
   return text
     .replaceAll('&', '&amp;')
     .replaceAll('<', '&lt;')

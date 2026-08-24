@@ -28,6 +28,9 @@ acme.about.foo
 
 Markdown is the canonical content format. A node can hold content and have
 children at the same time — there is no file-vs-directory distinction.
+A page may declare `metadata.type` (`markdown`, `json`, or `table`) to
+tell reading surfaces how to render its content; typed content is still
+plain text under the same versioning and concurrency rules.
 
 ## Architecture
 
