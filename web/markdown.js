@@ -27,7 +27,12 @@ function safeHref (url) {
 // [[path]] / [[path|label]] — org-relative wiki page links. Rendered as
 // anchors carrying data-wikilink; the app resolves them against the
 // current wiki. Code spans are exempt so docs about the syntax stay text.
-const WIKILINK = /\[\[([a-z0-9][a-z0-9_-]*(?:\.[a-z0-9][a-z0-9_-]*)*)(?:\|([^\]|]+))?\]\]/g
+// ![[path]] on a line of its own is an embed (see renderMarkdown); in
+// running text it stays literal, so the wikilink pass matches a leading
+// `!` too and leaves those occurrences untouched.
+const PATH_PATTERN = '[a-z0-9][a-z0-9_-]*(?:\\.[a-z0-9][a-z0-9_-]*)*'
+const WIKILINK = new RegExp(`(!?)\\[\\[(${PATH_PATTERN})(?:\\|([^\\]|]+))?\\]\\]`, 'g')
+const EMBED_LINE = new RegExp(`^!\\[\\[(${PATH_PATTERN})\\]\\]\\s*$`)
 
 function inline (raw) {
   let text = escapeHtml(raw)
@@ -36,8 +41,9 @@ function inline (raw) {
     .split(/(<code>[\s\S]*?<\/code>)/)
     .map((part) => part.startsWith('<code>')
       ? part
-      : part.replace(WIKILINK, (match, path, label) =>
-        `<a href="#" data-wikilink="${path}">${(label || path).trim()}</a>`))
+      : part.replace(WIKILINK, (match, bang, path, label) => bang
+        ? match
+        : `<a href="#" data-wikilink="${path}">${(label || path).trim()}</a>`))
     .join('')
   text = text.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (match, label, url) => {
     const href = safeHref(url)
@@ -99,6 +105,15 @@ export function renderMarkdown (source) {
       continue
     }
 
+    // ![[path]] on its own line embeds the target page: an empty,
+    // app-hydrated placeholder. The syntax carries no content itself.
+    const embed = line.match(EMBED_LINE)
+    if (embed) {
+      html.push(`<div class="embed" data-embed="${embed[1]}"></div>`)
+      index += 1
+      continue
+    }
+
     const unordered = /^\s*[-*+]\s+/
     const ordered = /^\s*\d+\.\s+/
     if (unordered.test(line) || ordered.test(line)) {
@@ -114,9 +129,12 @@ export function renderMarkdown (source) {
       continue
     }
 
+    // A valid embed line interrupts a paragraph (no blank line needed);
+    // an invalid one is just text and stays in the paragraph.
     const paragraph = []
     while (index < lines.length && lines[index].trim() !== '' &&
-           !/^(#{1,6}\s|```|>|\s*[-*+]\s|\s*\d+\.\s)/.test(lines[index])) {
+           !/^(#{1,6}\s|```|>|\s*[-*+]\s|\s*\d+\.\s)/.test(lines[index]) &&
+           !EMBED_LINE.test(lines[index])) {
       paragraph.push(lines[index].trim())
       index += 1
     }

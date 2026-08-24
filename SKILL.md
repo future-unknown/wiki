@@ -204,6 +204,20 @@ Link pages with wikilinks: `[[architecture.deployment]]`, or labeled,
 used everywhere else. Wikilinks are plain text to the system — write them
 anywhere in page content; reading surfaces render them as navigation.
 
+To embed a whole page instead of linking it, put an embed on a line of
+its own:
+
+```text
+![[usage.daily]]
+```
+
+Reading surfaces render the target page inline — content and any
+observed data — so a dashboard is just a page of prose and embeds. To
+everything else (including `wiki get`) an embed is plain text, and in
+running text or code it stays literal. Embeds resolve the same
+wiki-relative paths as wikilinks; after moving a page, find stale
+embeds the same way you find stale wikilinks.
+
 After moving a page, links pointing at its old path still say the old
 path. Find them with `wiki search "<old.path>"` and update each referring
 page (with `--if-revision`, as always). That same search also answers

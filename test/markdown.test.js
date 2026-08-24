@@ -44,6 +44,34 @@ describe('renderMarkdown', () => {
     renderMarkdown('[[Not.Valid]]').should.not.containEql('data-wikilink')
   })
 
+  it('renders an embed line as an empty placeholder div', () => {
+    renderMarkdown('![[usage.daily]]')
+      .should.equal('<div class="embed" data-embed="usage.daily"></div>')
+  })
+
+  it('lets a valid embed line interrupt a paragraph', () => {
+    const html = renderMarkdown('Some prose.\n![[usage.daily]]\nMore prose.')
+    html.should.containEql('<p>Some prose.</p>')
+    html.should.containEql('data-embed="usage.daily"')
+    html.should.containEql('<p>More prose.</p>')
+  })
+
+  it('keeps inline and invalid embeds as literal text', () => {
+    const inline = renderMarkdown('See ![[usage.daily]] for numbers.')
+    inline.should.not.containEql('data-embed')
+    inline.should.not.containEql('data-wikilink')
+    inline.should.containEql('![[usage.daily]]')
+
+    const invalid = renderMarkdown('![[Not Valid]]')
+    invalid.should.not.containEql('data-embed')
+    invalid.should.containEql('![[Not Valid]]')
+  })
+
+  it('leaves embeds in code alone', () => {
+    renderMarkdown('```\n![[usage.daily]]\n```').should.not.containEql('data-embed')
+    renderMarkdown('Use `![[usage.daily]]` to embed.').should.not.containEql('data-embed')
+  })
+
   it('handles empty input', () => {
     renderMarkdown('').should.equal('')
     renderMarkdown(undefined).should.equal('')

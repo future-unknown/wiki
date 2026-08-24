@@ -88,6 +88,15 @@ main { flex: 1; display: flex; min-height: 0; }
 #data-panel .data-latest .meta { color: #6b7683; font-size: 0.8rem; }
 #data-panel .data-chart { margin-top: 0.8rem; }
 
+.embed { margin: 0.8rem 0; padding: 0.8rem; border: 1px solid #dde3ea; border-radius: 8px; background: #fbfcfd; }
+.embed .embed { background: #fff; } /* nesting stays visible */
+.embed-header { display: flex; align-items: baseline; gap: 0.6rem; margin-bottom: 0.4rem; }
+.embed-header a { font-weight: 600; text-decoration: none; }
+.embed-header code { color: #6b7683; font-size: 0.75rem; background: none; padding: 0; }
+.embed-body > :first-child { margin-top: 0; }
+.embed-body > :last-child { margin-bottom: 0; }
+.embed-data { margin-top: 0.6rem; }
+
 .data-table { border-collapse: collapse; font-size: 0.88rem; width: 100%; }
 .data-table th, .data-table td { border: 1px solid #dde3ea; padding: 0.35rem 0.6rem; text-align: left; }
 .data-table th { background: #f6f8fa; }

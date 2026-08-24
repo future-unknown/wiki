@@ -74,10 +74,7 @@ async function loadTree () {
 
 const CHART_COLORS = ['#2563eb', '#db8b0b', '#0f9d58', '#b3261e', '#7c3aed', '#0e7490']
 
-function renderDataPanel (node, rows) {
-  elements.dataPanel.hidden = false
-  elements.dataPanel.innerHTML = ''
-
+function renderDataInto (container, node, rows) {
   const latest = rows[rows.length - 1]
   const readout = document.createElement('div')
   readout.className = 'data-latest'
@@ -88,7 +85,7 @@ function renderDataPanel (node, rows) {
   meta.textContent = ` · ${latest.ts} · ${rows.length} observation(s)`
   readout.appendChild(value)
   readout.appendChild(meta)
-  elements.dataPanel.appendChild(readout)
+  container.appendChild(readout)
 
   const { ts, series } = seriesFromRows(rows, node.metadata?.data?.render)
   const fields = Object.keys(series)
@@ -96,8 +93,8 @@ function renderDataPanel (node, rows) {
 
   const chart = document.createElement('div')
   chart.className = 'data-chart'
-  elements.dataPanel.appendChild(chart)
-  const width = Math.max(320, elements.dataPanel.clientWidth - 16)
+  container.appendChild(chart)
+  const width = Math.max(320, container.clientWidth - 16)
   new uPlot({
     width,
     height: 180,
@@ -118,9 +115,80 @@ async function loadData (node) {
     const { rows } = await client.data(node.fullPath, { limit: 500 })
     // The reader may already be on another page by the time this lands.
     if (selectedPath !== node.fullPath || rows.length === 0) return
-    renderDataPanel(node, rows)
+    elements.dataPanel.hidden = false
+    elements.dataPanel.innerHTML = ''
+    renderDataInto(elements.dataPanel, node, rows)
   } catch {
     // A page without readable data simply has no panel.
+  }
+}
+
+const EMBED_DEPTH_LIMIT = 3
+
+function embedNotice (target, message) {
+  target.innerHTML = ''
+  const hint = document.createElement('p')
+  hint.className = 'hint'
+  hint.textContent = message
+  target.appendChild(hint)
+}
+
+/**
+ * Fill ![[...]] placeholders with their target pages: header link,
+ * content rendered by type, data block when the page has observations.
+ * Depth-capped and cycle-safe; a failing embed becomes an inert notice
+ * and never breaks the host page.
+ */
+async function hydrateEmbeds (container, rootPath, depth, visited) {
+  for (const target of container.querySelectorAll('[data-embed]')) {
+    if (selectedPath !== rootPath) return // reader moved on mid-hydration
+    const relPath = target.dataset.embed
+    const fullPath = config.wiki + '.' + relPath
+    if (depth >= EMBED_DEPTH_LIMIT) {
+      embedNotice(target, `embed depth limit reached: ${relPath}`)
+      continue
+    }
+    if (visited.has(fullPath)) {
+      embedNotice(target, `circular embed: ${relPath}`)
+      continue
+    }
+    try {
+      const node = await client.get(fullPath)
+      target.innerHTML = ''
+
+      const header = document.createElement('div')
+      header.className = 'embed-header'
+      const link = document.createElement('a')
+      link.href = `#${fullPath}`
+      link.dataset.path = fullPath
+      link.textContent = node.title || node.slug
+      const pathCode = document.createElement('code')
+      pathCode.textContent = fullPath
+      header.appendChild(link)
+      header.appendChild(pathCode)
+      target.appendChild(header)
+
+      const body = document.createElement('div')
+      body.className = 'embed-body'
+      body.innerHTML = renderContent(node)
+      target.appendChild(body)
+
+      try {
+        const { rows } = await client.data(fullPath, { limit: 500 })
+        if (rows.length > 0) {
+          const dataBlock = document.createElement('div')
+          dataBlock.className = 'embed-data'
+          target.appendChild(dataBlock)
+          renderDataInto(dataBlock, node, rows)
+        }
+      } catch {
+        // No readable data — no block.
+      }
+
+      await hydrateEmbeds(body, rootPath, depth + 1, new Set([...visited, fullPath]))
+    } catch {
+      embedNotice(target, `embed unavailable: ${relPath}`)
+    }
   }
 }
 
@@ -137,6 +205,7 @@ async function openNode (fullPath) {
     link.classList.toggle('selected', link.dataset.path === fullPath)
   }
   await loadData(node)
+  await hydrateEmbeds(elements.content, fullPath, 0, new Set([fullPath]))
 }
 
 async function runSearch (query) {

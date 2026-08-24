@@ -173,6 +173,11 @@ Pages link to each other with wikilinks — `[[docs.cli]]` or
 `[[docs.cli|the CLI guide]]` — org-relative dot-paths in plain text.
 The system never parses them; reading surfaces render them as
 navigation, and search finds referring pages by the target's path.
+An embed — `![[usage.daily]]` on a line of its own — composes pages:
+reading surfaces render the target page inline (content, data, and
+nested embeds, depth-capped and cycle-safe), which makes a dashboard
+just a page of prose and embeds. Like wikilinks, embeds are plain text
+to the system itself.
 
 Tree children order alphabetically by slug, except siblings carrying a
 numeric `order` in their metadata, which sort first, ascending — set it
