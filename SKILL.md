@@ -179,9 +179,16 @@ Prints the page's observations, oldest first. `--latest` returns only
 the newest one (and combines with nothing else); `--since <iso>` /
 `--until <iso>` bound the range and `--limit <n>` caps it.
 
+`--summary` (also standalone) asks a different question — *which pages
+in the subtree carry observations* — listing each page with its count
+and latest observation time. Use it from the wiki root or a section to
+orient before pushing or reading, the way `wiki tree` orients for
+content.
+
 ```bash
 wiki data acme.usage --latest --json
 wiki data acme.usage --since 2026-08-01T00:00:00Z --limit 100
+wiki data acme --summary
 ```
 
 ## Typed pages

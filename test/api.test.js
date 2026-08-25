@@ -282,6 +282,17 @@ describe('wiki-api', () => {
       const invalid = await rpc('wiki.data', { path: 'acme.usage', latest: true, limit: 5 })
       invalid.error.data.code.should.equal('VALIDATION_ERROR')
     })
+
+    it('summarizes data pages with full paths for any reader', async () => {
+      const { rpc } = await createTestApi()
+      await rpc('wiki.set', { path: 'acme.usage', content: 'API usage.' })
+      await rpc('wiki.push', { path: 'acme.usage', payload: 1 }, 'agent-token')
+      const summary = await rpc('wiki.dataSummary', { path: 'acme' }, 'read-token')
+      summary.result.length.should.equal(1)
+      summary.result[0].fullPath.should.equal('acme.usage')
+      summary.result[0].count.should.equal(1)
+      summary.result[0].latestTs.should.be.a.String()
+    })
   })
 
   describe('wiki.list', () => {

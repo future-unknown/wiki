@@ -93,6 +93,9 @@ describe('wiki-sdk', () => {
     data.rows.map((row) => row.payload.requests).should.deepEqual([7, 9])
     const latest = await client.data('acme.foo', { latest: true })
     latest.rows[0].payload.requests.should.equal(9)
+
+    const summary = await client.dataSummary('acme')
+    summary.map((entry) => [entry.fullPath, entry.count]).should.deepEqual([['acme.foo', 2]])
   })
 
   it('supports optimistic concurrency through expectedRevisionId', async () => {

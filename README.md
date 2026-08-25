@@ -167,7 +167,10 @@ become unreachable with deletion. Unlike everything authored, the
 channel may *forget*: a page's `metadata.data.retain` policy
 (`{"rows": n}` and/or `{"days": n}`) trims old observations on every
 push. Retention configuration is authored intent, so it lives in
-versioned metadata; the observations themselves do not.
+versioned metadata; the observations themselves do not. `wiki data
+<path> --summary` (and `wiki.dataSummary`) lists which pages in a
+subtree carry observations — count and latest time per page — so
+navigation surfaces and agents can see where the channels live.
 
 Pages link to each other with wikilinks — `[[docs.cli]]` or
 `[[docs.cli|the CLI guide]]` — org-relative dot-paths in plain text.

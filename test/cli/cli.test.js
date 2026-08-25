@@ -232,6 +232,19 @@ describe('wiki CLI (end to end)', () => {
       (await wiki(['push', 'acme.usage', 'not json'])).code.should.equal(2)
       ;(await wiki(['push', 'acme.usage'])).code.should.equal(2)
       ;(await wiki(['data', 'acme.usage', '--latest', '--limit', '5'])).code.should.equal(2)
+      ;(await wiki(['data', 'acme', '--summary', '--latest'])).code.should.equal(2)
+    })
+
+    it('summarizes which pages carry observations', async () => {
+      const summary = await wiki(['data', 'acme', '--summary', '--json'])
+      summary.code.should.equal(0, summary.stderr)
+      const entries = JSON.parse(summary.stdout)
+      entries.map((entry) => entry.fullPath).should.containEql('acme.usage')
+      entries.every((entry) => entry.count >= 1).should.be.true()
+
+      const human = await wiki(['data', 'acme', '--summary'])
+      human.stdout.should.containEql('acme.usage')
+      human.stdout.should.containEql('observations, latest')
     })
 
     it('exits 3 for a missing page', async () => {

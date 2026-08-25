@@ -165,6 +165,45 @@ describe('data channel', () => {
     result.changed.should.be.true()
   })
 
+  it('summarizes which pages carry observations, scoped to a subtree', async () => {
+    const { kit } = await createTestKit()
+    const { wikiId } = await seedAcme(kit)
+    await kit.pushData({ wikiId, path: 'about.foo', payload: 1, ts: '2026-01-01T00:00:00Z', actor: agent })
+    await kit.pushData({ wikiId, path: 'about.foo', payload: 2, ts: '2026-01-03T00:00:00Z', actor: agent })
+    await kit.pushData({ wikiId, path: 'about.bar', payload: 3, ts: '2026-01-02T00:00:00Z', actor: agent })
+    await kit.setNode({ wikiId, path: 'elsewhere', content: 'x', actor: human })
+    await kit.pushData({ wikiId, path: 'elsewhere', payload: 4, actor: agent })
+
+    // whole wiki from the root
+    const all = await kit.getDataSummary({ wikiId, path: '' })
+    all.map((entry) => [entry.path, entry.count]).should.deepEqual([
+      ['about.bar', 1],
+      ['about.foo', 2],
+      ['elsewhere', 1]
+    ])
+    all[1].latestTs.should.equal('2026-01-03T00:00:00.000Z')
+
+    // subtree scoping; pages without observations do not appear
+    const scoped = await kit.getDataSummary({ wikiId, path: 'about' })
+    scoped.map((entry) => entry.path).should.deepEqual(['about.bar', 'about.foo'])
+
+    await kit.getDataSummary({ wikiId, path: 'about.nope' })
+      .should.be.rejectedWith(NotFoundError)
+  })
+
+  it('keeps summaries true across moves and deletions', async () => {
+    const { kit } = await createTestKit()
+    const { wikiId } = await seedAcme(kit)
+    await kit.pushData({ wikiId, path: 'about.foo', payload: 1, actor: agent })
+    await kit.pushData({ wikiId, path: 'about.baz', payload: 2, actor: agent })
+
+    await kit.moveNode({ wikiId, fromPath: 'about.foo', toPath: 'about.renamed', actor: human })
+    await kit.deleteNode({ wikiId, path: 'about.baz', actor: human })
+
+    const summary = await kit.getDataSummary({ wikiId, path: '' })
+    summary.map((entry) => entry.path).should.deepEqual(['about.renamed'])
+  })
+
   it('keeps data attached across moves and drops it with deletion', async () => {
     const { kit } = await createTestKit()
     const { wikiId } = await seedAcme(kit)
