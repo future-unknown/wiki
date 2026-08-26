@@ -81,6 +81,24 @@ describe('wiki creation', () => {
     commit.message.should.equal('init')
   })
 
+  it('reads carry their provenance: the node names its commit and actor', async () => {
+    const { kit } = await createTestKit()
+    const { wikiId } = await seedAcme(kit)
+
+    const original = await kit.getNode({ wikiId, path: 'about.foo' })
+    original.commit.actor.should.deepEqual({ type: 'human', id: 'user_test', onBehalfOf: null })
+
+    await kit.setNode({ wikiId, path: 'about.foo', content: 'v2', actor: agent, message: 'agent pass' })
+    const updated = await kit.getNode({ wikiId, path: 'about.foo' })
+    updated.commit.actor.should.deepEqual({ type: 'agent', id: 'agent_test', onBehalfOf: 'user_test' })
+    updated.commit.message.should.equal('agent pass')
+    updated.commit.id.should.equal(updated.commitId)
+
+    // historical reads carry the provenance of their own commit
+    const past = await kit.getNode({ wikiId, path: 'about.foo', commitId: original.commitId })
+    past.commit.actor.id.should.equal('user_test')
+  })
+
   it('requires an actor', async () => {
     const { kit } = await createTestKit()
     await kit.createWiki({ slug: 'acme', content: 'hi' }).should.be.rejectedWith(ValidationError)

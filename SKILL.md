@@ -66,8 +66,10 @@ wiki get acme.about.foo --json   # fresh content + fresh revisionId
 ### Read a node — `wiki get <path>`
 
 Prints the raw Markdown content on stdout; `--json` adds ids, title,
-metadata, `revisionId`, and timestamps. `--commit <id>` or `--at <iso>` read
-historical states (mutually exclusive).
+metadata, `revisionId`, timestamps, and the commit that produced this
+revision (with its actor and message) — who last touched the page,
+without a history call. `--commit <id>` or `--at <iso>` read historical
+states (mutually exclusive).
 
 ```bash
 wiki get acme.about.foo
