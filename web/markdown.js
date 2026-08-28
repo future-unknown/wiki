@@ -24,7 +24,7 @@ function safeHref (url) {
   return null
 }
 
-// [[path]] / [[path|label]] — org-relative wiki page links. Rendered as
+// [[path]] / [[path|label]] — wiki-relative page links. Rendered as
 // anchors carrying data-wikilink; the app resolves them against the
 // current wiki. Code spans are exempt so docs about the syntax stay text.
 // ![[path]] on a line of its own is an embed (see renderMarkdown); in

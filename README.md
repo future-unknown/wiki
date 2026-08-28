@@ -173,7 +173,7 @@ subtree carry observations — count and latest time per page — so
 navigation surfaces and agents can see where the channels live.
 
 Pages link to each other with wikilinks — `[[docs.cli]]` or
-`[[docs.cli|the CLI guide]]` — org-relative dot-paths in plain text.
+`[[docs.cli|the CLI guide]]` — wiki-relative dot-paths in plain text.
 The system never parses them; reading surfaces render them as
 navigation, and search finds referring pages by the target's path.
 An embed — `![[usage.daily]]` on a line of its own — composes pages:

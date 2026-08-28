@@ -16,7 +16,8 @@ async function createTestApi () {
       'human-token': { actor: { type: 'human', id: 'user_123', onBehalfOf: null } },
       'agent-token': { actor: { type: 'agent', id: 'agent_9', onBehalfOf: 'user_123' } },
       'read-token': { actor: { type: 'human', id: 'reader', onBehalfOf: null }, allow: ['wiki:read'] },
-      'push-token': { actor: { type: 'agent', id: 'meter_1', onBehalfOf: null }, allow: ['wiki:push'] }
+      'push-token': { actor: { type: 'agent', id: 'meter_1', onBehalfOf: null }, allow: ['wiki:push'] },
+      'acme-token': { actor: { type: 'human', id: 'guest', onBehalfOf: null }, wikis: ['acme'] }
     }
   })
   const app = express()
@@ -74,6 +75,18 @@ describe('wiki-api', () => {
     it('authorizes wiki:create for new root wikis', async () => {
       const { rpc } = await createTestApi()
       const denied = await rpc('wiki.set', { path: 'acme', content: 'root' }, 'read-token')
+      denied.error.data.code.should.equal('UNAUTHORIZED')
+    })
+
+    it('scopes a wiki-scoped token to its wikis', async () => {
+      const { rpc } = await createTestApi()
+      await rpc('wiki.set', { path: 'acme.about', content: 'about' })
+      await rpc('wiki.set', { path: 'other.about', content: 'about' })
+      const read = await rpc('wiki.get', { path: 'acme.about' }, 'acme-token')
+      read.result.content.should.equal('about')
+      const write = await rpc('wiki.set', { path: 'acme.x', content: 'x' }, 'acme-token')
+      write.result.node.fullPath.should.equal('acme.x')
+      const denied = await rpc('wiki.get', { path: 'other.about' }, 'acme-token')
       denied.error.data.code.should.equal('UNAUTHORIZED')
     })
   })
@@ -304,6 +317,14 @@ describe('wiki-api', () => {
       await rpc('wiki.set', { path: 'other', content: 'o' })
       const listed = await rpc('wiki.list', {}, 'read-token')
       listed.result.map((wiki) => wiki.fullPath).should.deepEqual(['acme', 'other'])
+    })
+
+    it('shows a wiki-scoped token only its wikis', async () => {
+      const { rpc } = await createTestApi()
+      await rpc('wiki.set', { path: 'acme', content: 'a' })
+      await rpc('wiki.set', { path: 'other', content: 'o' })
+      const listed = await rpc('wiki.list', {}, 'acme-token')
+      listed.result.map((wiki) => wiki.fullPath).should.deepEqual(['acme'])
     })
   })
 

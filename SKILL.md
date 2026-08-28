@@ -209,8 +209,8 @@ EOF
 ## Linking between pages
 
 Link pages with wikilinks: `[[architecture.deployment]]`, or labeled,
-`[[docs.cli|the CLI guide]]`. Paths are the same org-relative dot-paths
-used everywhere else. Wikilinks are plain text to the system — write them
+`[[docs.cli|the CLI guide]]`. Paths are the same wiki-relative dot-paths
+used everywhere else — links resolve within the wiki the page lives in. Wikilinks are plain text to the system — write them
 anywhere in page content; reading surfaces render them as navigation.
 
 To embed a whole page instead of linking it, put an embed on a line of
