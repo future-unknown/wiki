@@ -210,7 +210,9 @@ EOF
 
 Link pages with wikilinks: `[[architecture.deployment]]`, or labeled,
 `[[docs.cli|the CLI guide]]`. Paths are the same wiki-relative dot-paths
-used everywhere else — links resolve within the wiki the page lives in. Wikilinks are plain text to the system — write them
+used everywhere else — links resolve within the wiki the page lives in.
+Inside a Markdown table cell, escape the label pipe — `[[path\|Label]]`
+— because tables split cells on a raw `|`. Wikilinks are plain text to the system — write them
 anywhere in page content; reading surfaces render them as navigation.
 
 To embed a whole page instead of linking it, put an embed on a line of
