@@ -168,7 +168,9 @@ unreachable with deletion. One declaration decides the behavior:
 store (`put` upserts by key, `--if-version` is compare-and-swap for
 racing writers); no key and the page acts as a log (`put` appends,
 `--ts` backfills, `metadata.retain` `{"days": n}` expires old
-records). `metadata.schema` (JSON Schema) is enforced on every put.
+records). Reads follow the sort order: on a keyed page `latest`,
+`since`, and `until` range over keys, not time. `metadata.schema`
+(JSON Schema) is enforced on every put.
 The declarations are authored intent, so they live in versioned
 metadata — merged field-wise with `wiki meta`; the records themselves
 do not. Record storage speaks the DynamoDB API behind the scenes: a

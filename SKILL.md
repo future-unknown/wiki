@@ -194,6 +194,14 @@ One declaration decides how a page's records behave:
   (`{"days": n}`) expires old records, so do not treat an unkeyed
   page as permanent storage.
 
+Read options follow the sort order. On an unkeyed page records sort
+by time, so `--latest`, `--since`, and `--until` mean what they say.
+On a keyed page records sort by key: `--since`/`--until` bound the
+key range and `--latest` returns the highest key, not the most recent
+write — read `_ts` on the records to judge recency. Changing `key` on
+a page that already holds records does not rewrite them: earlier
+records keep their addresses and list alongside the new ones.
+
 A page may also declare `metadata.schema` — a JSON Schema that every
 record must match; a `put` that does not match is refused. Declare
 `key`, `schema`, and `retain` with `wiki meta`. Records are field
