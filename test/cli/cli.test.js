@@ -201,55 +201,79 @@ describe('wiki CLI (end to end)', () => {
     })
   })
 
-  describe('push and data', () => {
-    it('pushes inline JSON and reads the latest observation back', async () => {
+  describe('put, del, data, and meta', () => {
+    it('puts inline JSON and reads the latest record back', async () => {
       await wiki(['set', 'acme.usage', 'Daily API usage.'])
-      const pushed = await wiki(['push', 'acme.usage', '{"requests": 1042}', '--json'])
-      pushed.code.should.equal(0, pushed.stderr)
-      JSON.parse(pushed.stdout).payload.should.deepEqual({ requests: 1042 })
+      const put = await wiki(['put', 'acme.usage', '{"requests": 1042}', '--json'])
+      put.code.should.equal(0, put.stderr)
+      JSON.parse(put.stdout).record.requests.should.equal(1042)
 
       const latest = await wiki(['data', 'acme.usage', '--latest', '--json'])
       latest.code.should.equal(0, latest.stderr)
       const parsed = JSON.parse(latest.stdout)
       parsed.fullPath.should.equal('acme.usage')
-      parsed.rows.length.should.equal(1)
-      parsed.rows[0].payload.should.deepEqual({ requests: 1042 })
-      parsed.rows[0].should.have.properties('id', 'ts', 'actor', 'createdAt')
+      parsed.records.length.should.equal(1)
+      parsed.records[0].requests.should.equal(1042)
+      parsed.records[0].should.have.properties('_id', '_ts', '_actor', '_v')
     })
 
-    it('pushes from stdin and renders a human listing', async () => {
-      const result = await wiki(['push', 'acme.usage', '--ts', '2020-01-01T00:00:00Z'],
+    it('puts from stdin and renders a human listing', async () => {
+      const result = await wiki(['put', 'acme.usage', '--ts', '2020-01-01T00:00:00Z'],
         { stdin: '{"requests": 1}\n' })
       result.code.should.equal(0, result.stderr)
-      result.stderr.should.containEql('pushed to acme.usage')
+      result.stderr.should.containEql('put acme.usage')
 
       const listed = await wiki(['data', 'acme.usage', '--until', '2020-06-01T00:00:00Z'])
       listed.code.should.equal(0)
       listed.stdout.should.containEql('2020-01-01T00:00:00.000Z  {"requests":1}')
     })
 
-    it('rejects invalid payloads and read-option combinations, exit code 2', async () => {
-      (await wiki(['push', 'acme.usage', 'not json'])).code.should.equal(2)
-      ;(await wiki(['push', 'acme.usage'])).code.should.equal(2)
+    it('declares a key with meta, upserts, claims with --if-version, and deletes', async () => {
+      await wiki(['set', 'acme.tasks', 'Task board.'])
+      const meta = await wiki(['meta', 'acme.tasks', '{"key": "id"}'])
+      meta.code.should.equal(0, meta.stderr)
+      meta.stderr.should.containEql('updated acme.tasks')
+
+      const first = await wiki(['put', 'acme.tasks', '{"id": "t-1", "status": "todo"}', '--json'])
+      first.code.should.equal(0, first.stderr)
+      JSON.parse(first.stdout).record._v.should.equal(1)
+
+      const claim = await wiki(['put', 'acme.tasks', '{"id": "t-1", "status": "claimed"}', '--if-version', '1'])
+      claim.code.should.equal(0, claim.stderr)
+      const stale = await wiki(['put', 'acme.tasks', '{"id": "t-1", "status": "claimed"}', '--if-version', '1'])
+      stale.code.should.equal(4)
+
+      const byKey = await wiki(['data', 'acme.tasks', 't-1', '--json'])
+      byKey.code.should.equal(0, byKey.stderr)
+      JSON.parse(byKey.stdout).record.status.should.equal('claimed')
+
+      const del = await wiki(['del', 'acme.tasks', 't-1'])
+      del.code.should.equal(0, del.stderr)
+      del.stderr.should.containEql('deleted t-1 from acme.tasks')
+      ;(await wiki(['data', 'acme.tasks', 't-1'])).code.should.equal(3)
+    })
+
+    it('enforces a declared schema on put', async () => {
+      await wiki(['set', 'acme.survey', 'Survey.'])
+      await wiki(['meta', 'acme.survey', '{"schema": {"type": "object", "required": ["vote"]}}'])
+      const bad = await wiki(['put', 'acme.survey', '{"nope": 1}'])
+      bad.code.should.equal(2)
+      bad.stderr.should.containEql('schema')
+      ;(await wiki(['put', 'acme.survey', '{"vote": "yes"}'])).code.should.equal(0)
+    })
+
+    it('rejects invalid records and read-option combinations, exit code 2', async () => {
+      (await wiki(['put', 'acme.usage', 'not json'])).code.should.equal(2)
+      ;(await wiki(['put', 'acme.usage'])).code.should.equal(2)
+      ;(await wiki(['put', 'acme.usage', '"bare string"'])).code.should.equal(2)
       ;(await wiki(['data', 'acme.usage', '--latest', '--limit', '5'])).code.should.equal(2)
-      ;(await wiki(['data', 'acme', '--summary', '--latest'])).code.should.equal(2)
+      ;(await wiki(['meta', 'acme.usage', '[1]'])).code.should.equal(2)
     })
 
-    it('summarizes which pages carry observations', async () => {
-      const summary = await wiki(['data', 'acme', '--summary', '--json'])
-      summary.code.should.equal(0, summary.stderr)
-      const entries = JSON.parse(summary.stdout)
-      entries.map((entry) => entry.fullPath).should.containEql('acme.usage')
-      entries.every((entry) => entry.count >= 1).should.be.true()
-
-      const human = await wiki(['data', 'acme', '--summary'])
-      human.stdout.should.containEql('acme.usage')
-      human.stdout.should.containEql('observations, latest')
-    })
-
-    it('exits 3 for a missing page', async () => {
-      (await wiki(['push', 'acme.nope', '1'])).code.should.equal(3)
+    it('exits 3 for a missing page or record', async () => {
+      (await wiki(['put', 'acme.nope', '{"n": 1}'])).code.should.equal(3)
       ;(await wiki(['data', 'acme.nope'])).code.should.equal(3)
+      ;(await wiki(['del', 'acme.usage', 'no-such-record'])).code.should.equal(3)
     })
   })
 

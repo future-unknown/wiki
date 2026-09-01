@@ -95,10 +95,13 @@ describe('architectural boundaries', () => {
     assertLayer('lib/cli', 'cli', { allowedLayers: ['sdk'], allowedPackages: [] })
   })
 
-  it('api imports only the kit, express, and the sqlite driver', () => {
+  it('api imports only the kit, express, and the storage drivers', () => {
     assertLayer('lib/api', 'api', {
       allowedLayers: ['kit'],
-      allowedPackages: ['express', 'better-sqlite3']
+      allowedPackages: [
+        'express', 'better-sqlite3',
+        '@aws-sdk/client-dynamodb', '@aws-sdk/lib-dynamodb', 'ajv'
+      ]
     })
   })
 

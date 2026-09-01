@@ -74,22 +74,30 @@ async function loadTree () {
 
 const CHART_COLORS = ['#2563eb', '#db8b0b', '#0f9d58', '#b3261e', '#7c3aed', '#0e7490']
 
-function renderDataInto (container, node, rows) {
-  const latest = rows[rows.length - 1]
+function recordFields (record) {
+  const fields = {}
+  for (const [field, value] of Object.entries(record)) {
+    if (!field.startsWith('_')) fields[field] = value
+  }
+  return fields
+}
+
+function renderDataInto (container, node, records) {
+  const latest = records[records.length - 1]
   const readout = document.createElement('div')
   readout.className = 'data-latest'
   const value = document.createElement('code')
-  value.textContent = JSON.stringify(latest.payload)
+  value.textContent = JSON.stringify(recordFields(latest))
   const meta = document.createElement('span')
   meta.className = 'meta'
-  meta.textContent = ` · ${latest.ts} · ${rows.length} observation(s)`
+  meta.textContent = ` · ${latest._ts} · ${records.length} record(s)`
   readout.appendChild(value)
   readout.appendChild(meta)
   container.appendChild(readout)
 
-  const { ts, series } = seriesFromRows(rows, node.metadata?.data?.render)
+  const { ts, series } = seriesFromRows(records, node.metadata?.data?.render)
   const fields = Object.keys(series)
-  if (rows.length < 2 || fields.length === 0 || typeof uPlot !== 'function') return
+  if (records.length < 2 || fields.length === 0 || typeof uPlot !== 'function') return
 
   const chart = document.createElement('div')
   chart.className = 'data-chart'
@@ -112,12 +120,12 @@ function renderDataInto (container, node, rows) {
 async function loadData (node) {
   elements.dataPanel.hidden = true
   try {
-    const { rows } = await client.data(node.fullPath, { limit: 500 })
+    const { records } = await client.data(node.fullPath, { limit: 500 })
     // The reader may already be on another page by the time this lands.
-    if (selectedPath !== node.fullPath || rows.length === 0) return
+    if (selectedPath !== node.fullPath || records.length === 0) return
     elements.dataPanel.hidden = false
     elements.dataPanel.innerHTML = ''
-    renderDataInto(elements.dataPanel, node, rows)
+    renderDataInto(elements.dataPanel, node, records)
   } catch {
     // A page without readable data simply has no panel.
   }
@@ -174,12 +182,12 @@ async function hydrateEmbeds (container, rootPath, depth, visited) {
       target.appendChild(body)
 
       try {
-        const { rows } = await client.data(fullPath, { limit: 500 })
-        if (rows.length > 0) {
+        const { records } = await client.data(fullPath, { limit: 500 })
+        if (records.length > 0) {
           const dataBlock = document.createElement('div')
           dataBlock.className = 'embed-data'
           target.appendChild(dataBlock)
-          renderDataInto(dataBlock, node, rows)
+          renderDataInto(dataBlock, node, records)
         }
       } catch {
         // No readable data — no block.

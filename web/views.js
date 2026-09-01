@@ -80,49 +80,44 @@ export function renderContent (node) {
   return renderMarkdown(node.content)
 }
 
-function numericValue (payload, field) {
-  if (isPlainObject(payload) && typeof payload[field] === 'number' && Number.isFinite(payload[field])) {
-    return payload[field]
-  }
-  if (field === 'value' && typeof payload === 'number' && Number.isFinite(payload)) {
-    return payload
+function numericValue (record, field) {
+  if (typeof record[field] === 'number' && Number.isFinite(record[field])) {
+    return record[field]
   }
   return null
 }
 
 /**
- * Chart-ready series from data-channel rows: x is epoch seconds
- * (numeric, as charting expects), y is one array per numeric payload
- * field. Fields come from `renderConfig.fields` when given, otherwise
- * every numeric field seen in any payload; bare numeric payloads chart
- * as the field "value". Missing values are null gaps.
+ * Chart-ready series from a page's records: x is epoch seconds from
+ * the `_ts` stamp (numeric, as charting expects), y is one array per
+ * numeric field. Fields come from `renderConfig.fields` when given,
+ * otherwise every numeric caller field seen in any record (stamps are
+ * never charted). Missing values are null gaps.
  *
- * @param {Array<{ ts: string, payload: unknown }>} rows
+ * @param {Array<object>} records
  * @param {{ fields?: string[] }} [renderConfig] the page's metadata.data.render
  * @returns {{ ts: number[], series: Record<string, Array<number|null>> }}
  */
-export function seriesFromRows (rows, renderConfig) {
+export function seriesFromRows (records, renderConfig) {
   const named = Array.isArray(renderConfig?.fields)
-    ? renderConfig.fields.filter((field) => typeof field === 'string')
+    ? renderConfig.fields.filter((field) => typeof field === 'string' && !field.startsWith('_'))
     : null
   const fields = named ?? []
   if (!named) {
-    for (const row of rows) {
-      if (typeof row.payload === 'number' && Number.isFinite(row.payload)) {
-        if (!fields.includes('value')) fields.push('value')
-      } else if (isPlainObject(row.payload)) {
-        for (const [key, value] of Object.entries(row.payload)) {
-          if (typeof value === 'number' && Number.isFinite(value) && !fields.includes(key)) {
-            fields.push(key)
-          }
+    for (const record of records) {
+      if (!isPlainObject(record)) continue
+      for (const [key, value] of Object.entries(record)) {
+        if (key.startsWith('_')) continue
+        if (typeof value === 'number' && Number.isFinite(value) && !fields.includes(key)) {
+          fields.push(key)
         }
       }
     }
   }
-  const ts = rows.map((row) => Math.round(Date.parse(row.ts) / 1000))
+  const ts = records.map((record) => Math.round(Date.parse(record._ts) / 1000))
   const series = {}
   for (const field of fields) {
-    series[field] = rows.map((row) => numericValue(row.payload, field))
+    series[field] = records.map((record) => (isPlainObject(record) ? numericValue(record, field) : null))
   }
   return { ts, series }
 }

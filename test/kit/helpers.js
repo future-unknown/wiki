@@ -6,13 +6,14 @@ export const agent = { type: 'agent', id: 'agent_test', onBehalfOf: 'user_test' 
 
 /**
  * Fresh in-memory kit for a test. The db handle is exposed so tests can
- * assert directly against SQLite state.
+ * assert directly against SQLite state. Pass an injected record store
+ * to exercise the record methods.
  */
-export async function createTestKit () {
+export async function createTestKit ({ records } = {}) {
   const db = new Database(':memory:')
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
-  const kit = createWikiKit({ db })
+  const kit = createWikiKit({ db, records })
   await kit.migrate()
   return { kit, db }
 }

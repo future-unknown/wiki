@@ -10,7 +10,7 @@ Everything is a node.
 Every node has a stable identity.
 Nodes form a tree.
 Paths address nodes.
-The wiki versions what is authored and timestamps what is observed.
+The wiki versions what is authored and stamps what is observed.
 Every authored mutation creates an immutable node revision.
 Every atomic mutation belongs to a wiki-wide commit.
 A commit defines the complete authored state of the wiki at that point.
@@ -144,8 +144,10 @@ wiki search <path> <query>   # FTS over the subtree; --limit
 wiki history <path>          # revisions, newest first
 wiki move <from> <to>        # subtree moves, identity preserved
 wiki rm <path>               # --recursive for subtrees, --if-commit for safety
-wiki push <path> [json]      # append an observation to a page's data channel
-wiki data <path>             # read observations; --latest, --since/--until, --limit
+wiki meta <path> [json]      # merge metadata fields; null removes; --replace swaps
+wiki put <path> [json]       # write a record: keyed pages upsert, unkeyed append
+wiki del <path> <key>        # delete one record by key (or _id on unkeyed pages)
+wiki data <path> [key]       # read records; --latest, --since/--until, --limit, --cursor
 ```
 
 Pages take **notes** — append-only feedback attached to the page's
@@ -156,21 +158,23 @@ idempotent and audited. `wiki.notes` with `subtree: true` lists the
 queue for a whole section (or the whole wiki from the root), each note
 naming its page's current path.
 
-Pages also carry a **data channel** — the third channel after content
-and notes, and the home of *observed* facts: metrics, measurements,
-events. Observations are appended with `wiki push` (JSON payloads,
-actor-attributed, timestamped, `--ts` for backfill) and read with
-`wiki data`, ascending by observation time. The channel sits outside
-the commit model: appends commute, never conflict, create no revision,
-and are attached to the page's identity, so they survive moves and
-become unreachable with deletion. Unlike everything authored, the
-channel may *forget*: a page's `metadata.data.retain` policy
-(`{"rows": n}` and/or `{"days": n}`) trims old observations on every
-push. Retention configuration is authored intent, so it lives in
-versioned metadata; the observations themselves do not. `wiki data
-<path> --summary` (and `wiki.dataSummary`) lists which pages in a
-subtree carry observations — count and latest time per page — so
-navigation surfaces and agents can see where the channels live.
+Pages also carry **records** — every page is a document you can read
+plus records you can query. A record is a JSON object written with
+`wiki put`, stamped with `_actor`, `_ts`, a version `_v`, and `_id`
+(its address within the page), outside the commit model: no revision,
+attached to the page's identity, so records survive moves and become
+unreachable with deletion. One declaration decides the behavior:
+`metadata.key` names a field and the page acts as a table or key/value
+store (`put` upserts by key, `--if-version` is compare-and-swap for
+racing writers); no key and the page acts as a log (`put` appends,
+`--ts` backfills, `metadata.retain` `{"days": n}` expires old
+records). `metadata.schema` (JSON Schema) is enforced on every put.
+The declarations are authored intent, so they live in versioned
+metadata — merged field-wise with `wiki meta`; the records themselves
+do not. Record storage speaks the DynamoDB API behind the scenes: a
+local [dynoxide](https://dynoxide.dev) sidecar in development and
+self-hosting, AWS DynamoDB at scale — same client, different endpoint
+(`WIKI_RECORDS_URL`).
 
 Pages link to each other with wikilinks — `[[docs.cli]]` or
 `[[docs.cli|the CLI guide]]` — wiki-relative dot-paths in plain text.

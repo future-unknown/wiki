@@ -3,20 +3,33 @@ import { once } from 'node:events'
 import express from 'express'
 import Database from 'better-sqlite3'
 import { createWikiKit } from '../lib/kit/index.js'
-import { createWikiRouter, createStaticTokenAuth } from '../lib/api/index.js'
+import { createWikiRouter, createStaticTokenAuth, openRecordStore } from '../lib/api/index.js'
+import { startDynoxide, uniqueTable } from './dynoxide.js'
 
 const servers = []
+let dynoxide
 
-async function createTestApi () {
+before(async () => {
+  dynoxide = await startDynoxide()
+})
+
+after(() => {
+  dynoxide.stop()
+})
+
+async function createTestApi ({ records = true } = {}) {
   const db = new Database(':memory:')
-  const kit = createWikiKit({ db })
+  const store = records
+    ? openRecordStore({ endpoint: dynoxide.endpoint, table: uniqueTable() })
+    : undefined
+  const kit = createWikiKit({ db, records: store })
   await kit.migrate()
   const auth = createStaticTokenAuth({
     tokens: {
       'human-token': { actor: { type: 'human', id: 'user_123', onBehalfOf: null } },
       'agent-token': { actor: { type: 'agent', id: 'agent_9', onBehalfOf: 'user_123' } },
       'read-token': { actor: { type: 'human', id: 'reader', onBehalfOf: null }, allow: ['wiki:read'] },
-      'push-token': { actor: { type: 'agent', id: 'meter_1', onBehalfOf: null }, allow: ['wiki:push'] },
+      'put-token': { actor: { type: 'agent', id: 'meter_1', onBehalfOf: null }, allow: ['wiki:put'] },
       'acme-token': { actor: { type: 'human', id: 'guest', onBehalfOf: null }, wikis: ['acme'] }
     }
   })
@@ -250,61 +263,99 @@ describe('wiki-api', () => {
     })
   })
 
-  describe('wiki.push / wiki.data', () => {
-    it('pushes observations and reads them back with full paths', async () => {
+  describe('wiki.put / wiki.del / wiki.data / wiki.meta', () => {
+    it('puts records and reads them back with full paths', async () => {
       const { rpc } = await createTestApi()
       await rpc('wiki.set', { path: 'acme.usage', content: 'API usage.' })
 
-      const pushed = await rpc('wiki.push', {
-        path: 'acme.usage', payload: { requests: 1042 }
+      const put = await rpc('wiki.put', {
+        path: 'acme.usage', value: { requests: 1042 }
       }, 'agent-token')
-      pushed.result.fullPath.should.equal('acme.usage')
-      pushed.result.payload.should.deepEqual({ requests: 1042 })
-      pushed.result.actor.should.deepEqual({ type: 'agent', id: 'agent_9', onBehalfOf: 'user_123' })
+      put.result.fullPath.should.equal('acme.usage')
+      put.result.record.requests.should.equal(1042)
+      put.result.record._actor.should.deepEqual({ type: 'agent', id: 'agent_9', onBehalfOf: 'user_123' })
 
       const read = await rpc('wiki.data', { path: 'acme.usage', latest: true }, 'read-token')
       read.result.fullPath.should.equal('acme.usage')
-      read.result.rows.length.should.equal(1)
-      read.result.rows[0].payload.should.deepEqual({ requests: 1042 })
+      read.result.records.length.should.equal(1)
+      read.result.records[0].requests.should.equal(1042)
     })
 
-    it('scopes a push-only token to pushing', async () => {
+    it('scopes a put-only token to putting', async () => {
       const { rpc } = await createTestApi()
       await rpc('wiki.set', { path: 'acme.usage', content: 'API usage.' })
 
-      const pushed = await rpc('wiki.push', { path: 'acme.usage', payload: 1 }, 'push-token')
-      pushed.result.payload.should.equal(1)
-      const write = await rpc('wiki.set', { path: 'acme.usage', content: 'x' }, 'push-token')
+      const put = await rpc('wiki.put', { path: 'acme.usage', value: { n: 1 } }, 'put-token')
+      put.result.record.n.should.equal(1)
+      const write = await rpc('wiki.set', { path: 'acme.usage', content: 'x' }, 'put-token')
       write.error.data.code.should.equal('UNAUTHORIZED')
-      const read = await rpc('wiki.data', { path: 'acme.usage' }, 'push-token')
+      const read = await rpc('wiki.data', { path: 'acme.usage' }, 'put-token')
       read.error.data.code.should.equal('UNAUTHORIZED')
+      const del = await rpc('wiki.del', { path: 'acme.usage', key: 'x' }, 'put-token')
+      del.error.data.code.should.equal('UNAUTHORIZED')
     })
 
-    it('keeps writing and pushing distinct actions', async () => {
+    it('keeps writing and putting distinct actions', async () => {
       const { rpc } = await createTestApi()
       await rpc('wiki.set', { path: 'acme.usage', content: 'API usage.' })
-      const denied = await rpc('wiki.push', { path: 'acme.usage', payload: 1 }, 'read-token')
+      const denied = await rpc('wiki.put', { path: 'acme.usage', value: { n: 1 } }, 'read-token')
       denied.error.data.code.should.equal('UNAUTHORIZED')
     })
 
-    it('maps validation and not-found errors', async () => {
+    it('deletes records with the write grant and returns them', async () => {
+      const { rpc } = await createTestApi()
+      await rpc('wiki.set', { path: 'acme.tasks', content: 'Tasks.' })
+      await rpc('wiki.meta', { path: 'acme.tasks', metadata: { key: 'id' } })
+      await rpc('wiki.put', { path: 'acme.tasks', value: { id: 't-1', status: 'todo' } }, 'agent-token')
+      const del = await rpc('wiki.del', { path: 'acme.tasks', key: 't-1' })
+      del.result.record.status.should.equal('todo')
+      const missing = await rpc('wiki.del', { path: 'acme.tasks', key: 't-1' })
+      missing.error.data.code.should.equal('NOT_FOUND')
+    })
+
+    it('maps validation, conflict, and not-found errors', async () => {
       const { rpc } = await createTestApi()
       await rpc('wiki.set', { path: 'acme.usage', content: 'API usage.' })
-      const missing = await rpc('wiki.push', { path: 'acme.nope', payload: 1 })
+      const missing = await rpc('wiki.put', { path: 'acme.nope', value: { n: 1 } })
       missing.error.data.code.should.equal('NOT_FOUND')
       const invalid = await rpc('wiki.data', { path: 'acme.usage', latest: true, limit: 5 })
       invalid.error.data.code.should.equal('VALIDATION_ERROR')
+      await rpc('wiki.set', { path: 'acme.tasks', content: 'Tasks.' })
+      await rpc('wiki.meta', { path: 'acme.tasks', metadata: { key: 'id' } })
+      await rpc('wiki.put', { path: 'acme.tasks', value: { id: 't-1' } })
+      const conflict = await rpc('wiki.put', { path: 'acme.tasks', value: { id: 't-1' }, ifVersion: 9 })
+      conflict.error.data.code.should.equal('REVISION_CONFLICT')
     })
 
-    it('summarizes data pages with full paths for any reader', async () => {
+    it('enforces a declared schema on put', async () => {
       const { rpc } = await createTestApi()
+      await rpc('wiki.set', { path: 'acme.survey', content: 'Survey.' })
+      await rpc('wiki.meta', {
+        path: 'acme.survey',
+        metadata: { schema: { type: 'object', required: ['vote'] } }
+      })
+      const bad = await rpc('wiki.put', { path: 'acme.survey', value: { nope: 1 } }, 'agent-token')
+      bad.error.data.code.should.equal('VALIDATION_ERROR')
+      const good = await rpc('wiki.put', { path: 'acme.survey', value: { vote: 'yes' } }, 'agent-token')
+      good.result.record.vote.should.equal('yes')
+    })
+
+    it('merges metadata as an authored write', async () => {
+      const { rpc } = await createTestApi()
+      await rpc('wiki.set', { path: 'acme.doc', content: 'body', metadata: { type: 'markdown' } })
+      const denied = await rpc('wiki.meta', { path: 'acme.doc', metadata: { key: 'id' } }, 'read-token')
+      denied.error.data.code.should.equal('UNAUTHORIZED')
+      const merged = await rpc('wiki.meta', { path: 'acme.doc', metadata: { key: 'id' } })
+      merged.result.changed.should.be.true()
+      merged.result.node.metadata.should.deepEqual({ type: 'markdown', key: 'id' })
+      merged.result.node.fullPath.should.equal('acme.doc')
+    })
+
+    it('refuses record operations when the host has no record store', async () => {
+      const { rpc } = await createTestApi({ records: false })
       await rpc('wiki.set', { path: 'acme.usage', content: 'API usage.' })
-      await rpc('wiki.push', { path: 'acme.usage', payload: 1 }, 'agent-token')
-      const summary = await rpc('wiki.dataSummary', { path: 'acme' }, 'read-token')
-      summary.result.length.should.equal(1)
-      summary.result[0].fullPath.should.equal('acme.usage')
-      summary.result[0].count.should.equal(1)
-      summary.result[0].latestTs.should.be.a.String()
+      const put = await rpc('wiki.put', { path: 'acme.usage', value: { n: 1 } })
+      put.error.data.code.should.equal('RECORDS_UNAVAILABLE')
     })
   })
 

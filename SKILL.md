@@ -19,6 +19,11 @@ Content is Markdown. A node can hold content *and* have children — there is no
 file-vs-directory distinction. Every change is recorded permanently; nothing
 you overwrite or delete is lost.
 
+Every page is also a small data store: **a document you can read plus records
+you can query**. The document is authored and versioned; records are stamped
+observations and state (see *Records* below). The wiki versions what is
+authored and stamps what is observed.
+
 ## Configuration
 
 The CLI reads `WIKI_URL` and `WIKI_TOKEN` from the environment (or
@@ -94,6 +99,21 @@ wiki set acme.about.foo < foo.md
 wiki set acme.guides.deploy --file deploy.md --title "Deploying" --message "initial guide"
 ```
 
+### Merge metadata — `wiki meta <path> [json]`
+
+Merges fields into a page's metadata without touching the rest — the
+safe way to change one declaration when other fields must survive.
+Supply a JSON object inline or on stdin; a `null` value removes its
+field; `--replace` swaps the whole object instead of merging. This is
+an authored change like `set`: it makes a revision and supports
+`--if-revision` and `--message '<why>'`.
+
+```bash
+wiki meta acme.usage '{"retain": {"days": 90}}'
+wiki meta acme.tasks '{"key": "id"}' --message "tasks become a keyed page"
+wiki meta acme.usage '{"retain": null}'
+```
+
 ### Browse — `wiki tree <path>`
 
 Shows the hierarchy with one-line previews. Scope it to any subtree and limit
@@ -149,48 +169,73 @@ wiki rm acme.scratch
 wiki rm acme.old-section --recursive --if-commit 57
 ```
 
-## Observed data
+## Records
 
-Besides authored content, every page has a **data channel** for observed
-facts: metrics, measurements, events. The rule for choosing:
+Besides its document, every page carries one set of **records** — JSON
+objects for structured data: metrics, events, survey responses, task
+state, config. The rule for choosing:
 
-- **`wiki set`** when you are *authoring* — composing or revising content
-  someone takes responsibility for. Writes are versioned and guarded by
-  `--if-revision`.
-- **`wiki push`** when you are *reporting* — recording something that
-  happened. Observations are timestamped, append-only, and never
-  conflict; they create no revision and do not appear in `wiki history`.
-  A page may trim old observations by a retention policy, so do not
-  treat the channel as permanent storage. Never push prose or
-  documentation; that belongs in authored content.
+- **`wiki set`** when you are *authoring* — composing content someone
+  takes responsibility for. Versioned, guarded by `--if-revision`.
+- **`wiki put`** when you are *recording* — writing structured data.
+  Records are stamped (`_actor`, `_ts`, `_v`, and `_id`, the record's
+  address within its page), create no revision, and never appear in
+  `wiki history`. Never put prose; that belongs in the document.
 
-### Push an observation — `wiki push <path> [json]`
+One declaration decides how a page's records behave:
 
-Appends one JSON value to the page's data channel. Supply the payload
-inline or via stdin (inline wins). `--ts <iso>` backfills the
-observation time; it defaults to now. The page must already exist.
+- **Keyed** — `metadata.key` names a field (e.g. `{"key": "id"}`).
+  `put` upserts by that field's value: the page acts as a table or a
+  key/value store. `--if-version <n>` makes the write conditional on
+  the record's current `_v` — when two agents race to update the same
+  record, exactly one wins and the loser exits with a conflict.
+- **Unkeyed** — no key declared. `put` appends: the page acts as a
+  log. `--ts <iso>` backfills the record time; `metadata.retain`
+  (`{"days": n}`) expires old records, so do not treat an unkeyed
+  page as permanent storage.
+
+A page may also declare `metadata.schema` — a JSON Schema that every
+record must match; a `put` that does not match is refused. Declare
+`key`, `schema`, and `retain` with `wiki meta`. Records are field
+maps, not documents: a record must be a JSON object, and field names
+starting with `_` are reserved for stamps.
+
+### Write a record — `wiki put <path> [json]`
+
+Supply the record inline or via stdin (inline wins). The page must
+already exist. Keyed pages take `--if-version <n>`; unkeyed pages take
+`--ts <iso>`.
 
 ```bash
-wiki push acme.usage '{"requests": 1042}'
-wiki push acme.usage --ts 2026-08-01T00:00:00Z < datum.json
+wiki put acme.usage '{"requests": 1042}'
+wiki put acme.tasks '{"id": "t-41", "status": "claimed", "by": "agent-7"}' --if-version 1
+wiki put acme.usage --ts 2026-08-01T00:00:00Z < record.json
 ```
 
-### Read observations — `wiki data <path>`
+### Read records — `wiki data <path> [key]`
 
-Prints the page's observations, oldest first. `--latest` returns only
-the newest one (and combines with nothing else); `--since <iso>` /
-`--until <iso>` bound the range and `--limit <n>` caps it.
-
-`--summary` (also standalone) asks a different question — *which pages
-in the subtree carry observations* — listing each page with its count
-and latest observation time. Use it from the wiki root or a section to
-orient before pushing or reading, the way `wiki tree` orients for
-content.
+With a key (the key-field value, or `_id` on an unkeyed page): exactly
+that record. Without one: the page's records in sort order — time on
+unkeyed pages, key on keyed ones. `--latest` returns only the newest
+(and combines with nothing else); `--since <iso>` / `--until <iso>`
+bound the range; `--limit <n>` caps it; when more records remain the
+result carries a continuation token — pass it back with
+`--cursor <token>` to continue.
 
 ```bash
-wiki data acme.usage --latest --json
+wiki data acme.tasks t-41 --json
 wiki data acme.usage --since 2026-08-01T00:00:00Z --limit 100
-wiki data acme --summary
+wiki data acme.usage --latest
+```
+
+### Delete a record — `wiki del <path> <key>`
+
+Removes one record by its key (keyed pages) or `_id` (unkeyed pages)
+and prints what was removed. Deleting records is curation and needs
+write access, not just record access.
+
+```bash
+wiki del acme.tasks t-41
 ```
 
 ## Typed pages

@@ -65,40 +65,34 @@ describe('renderContent', () => {
 })
 
 describe('seriesFromRows', () => {
-  const rows = [
-    { ts: '2026-01-01T00:00:00.000Z', payload: { requests: 10, errors: 1, region: 'us' } },
-    { ts: '2026-01-02T00:00:00.000Z', payload: { requests: 20 } },
-    { ts: '2026-01-03T00:00:00.000Z', payload: { requests: 30, errors: 3 } }
+  const records = [
+    { requests: 10, errors: 1, region: 'us', _ts: '2026-01-01T00:00:00.000Z', _v: 1 },
+    { requests: 20, _ts: '2026-01-02T00:00:00.000Z', _v: 1 },
+    { requests: 30, errors: 3, _ts: '2026-01-03T00:00:00.000Z', _v: 1 }
   ]
 
-  it('converts timestamps to epoch seconds', () => {
-    const { ts } = seriesFromRows(rows)
+  it('converts _ts stamps to epoch seconds', () => {
+    const { ts } = seriesFromRows(records)
     ts.should.deepEqual([1767225600, 1767312000, 1767398400])
   })
 
-  it('collects numeric fields with null gaps, skipping non-numeric ones', () => {
-    const { series } = seriesFromRows(rows)
+  it('collects numeric fields with null gaps, skipping non-numeric ones and stamps', () => {
+    const { series } = seriesFromRows(records)
     Object.keys(series).should.deepEqual(['requests', 'errors'])
     series.requests.should.deepEqual([10, 20, 30])
     series.errors.should.deepEqual([1, null, 3])
   })
 
-  it('honors renderConfig.fields', () => {
-    const { series } = seriesFromRows(rows, { fields: ['errors'] })
+  it('honors renderConfig.fields and never charts a stamp', () => {
+    const { series } = seriesFromRows(records, { fields: ['errors'] })
     Object.keys(series).should.deepEqual(['errors'])
+    const stamps = seriesFromRows(records, { fields: ['_v'] })
+    Object.keys(stamps.series).should.deepEqual([])
   })
 
-  it('charts bare numeric payloads as "value"', () => {
-    const { series } = seriesFromRows([
-      { ts: '2026-01-01T00:00:00.000Z', payload: 5 },
-      { ts: '2026-01-02T00:00:00.000Z', payload: 7 }
-    ])
-    series.value.should.deepEqual([5, 7])
-  })
-
-  it('returns no series for non-numeric payloads', () => {
+  it('returns no series for records without numeric fields', () => {
     const { ts, series } = seriesFromRows([
-      { ts: '2026-01-01T00:00:00.000Z', payload: 'text' }
+      { note: 'text', _ts: '2026-01-01T00:00:00.000Z' }
     ])
     ts.length.should.equal(1)
     Object.keys(series).should.deepEqual([])

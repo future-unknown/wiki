@@ -3,7 +3,8 @@ import { once } from 'node:events'
 import express from 'express'
 import Database from 'better-sqlite3'
 import { createWikiKit } from '../lib/kit/index.js'
-import { createWikiRouter, createStaticTokenAuth } from '../lib/api/index.js'
+import { createWikiRouter, createStaticTokenAuth, openRecordStore } from '../lib/api/index.js'
+import { startDynoxide, uniqueTable } from './dynoxide.js'
 import {
   WikiClient,
   NotFoundError,
@@ -17,9 +18,20 @@ import {
  * Run the SDK against a real API served over a real socket so the
  * whole fetch path is exercised.
  */
+let dynoxide
+
+before(async () => {
+  dynoxide = await startDynoxide()
+})
+
+after(() => {
+  dynoxide.stop()
+})
+
 async function createServer () {
   const db = new Database(':memory:')
-  const kit = createWikiKit({ db })
+  const records = openRecordStore({ endpoint: dynoxide.endpoint, table: uniqueTable() })
+  const kit = createWikiKit({ db, records })
   await kit.migrate()
   const auth = createStaticTokenAuth({
     tokens: { 'test-token': { actor: { type: 'agent', id: 'sdk_test', onBehalfOf: null } } }
@@ -86,16 +98,19 @@ describe('wiki-sdk', () => {
     done.resolvedBy.id.should.equal('sdk_test')
     ;(await client.notes('acme.foo')).length.should.equal(0)
 
-    const pushed = await client.push('acme.foo', { requests: 7 }, { ts: '2026-01-01T00:00:00Z' })
-    pushed.fullPath.should.equal('acme.foo')
-    await client.push('acme.foo', { requests: 9 })
+    const put = await client.put('acme.foo', { requests: 7 }, { ts: '2026-01-01T00:00:00Z' })
+    put.fullPath.should.equal('acme.foo')
+    await client.put('acme.foo', { requests: 9 })
     const data = await client.data('acme.foo', { since: '2026-01-01T00:00:00Z' })
-    data.rows.map((row) => row.payload.requests).should.deepEqual([7, 9])
+    data.records.map((record) => record.requests).should.deepEqual([7, 9])
     const latest = await client.data('acme.foo', { latest: true })
-    latest.rows[0].payload.requests.should.equal(9)
+    latest.records[0].requests.should.equal(9)
+    const deleted = await client.del('acme.foo', latest.records[0]._id)
+    deleted.record.requests.should.equal(9)
 
-    const summary = await client.dataSummary('acme')
-    summary.map((entry) => [entry.fullPath, entry.count]).should.deepEqual([['acme.foo', 2]])
+    const meta = await client.meta('acme.foo', { retain: { days: 30 } })
+    meta.changed.should.be.true()
+    meta.node.metadata.retain.should.deepEqual({ days: 30 })
   })
 
   it('supports optimistic concurrency through expectedRevisionId', async () => {

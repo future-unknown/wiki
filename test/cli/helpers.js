@@ -7,20 +7,24 @@ import { fileURLToPath } from 'node:url'
 import express from 'express'
 import Database from 'better-sqlite3'
 import { createWikiKit } from '../../lib/kit/index.js'
-import { createWikiRouter, createStaticTokenAuth } from '../../lib/api/index.js'
+import { createWikiRouter, createStaticTokenAuth, openRecordStore } from '../../lib/api/index.js'
+import { startDynoxide, uniqueTable } from '../dynoxide.js'
 
 const binPath = fileURLToPath(new URL('../../bin/wiki', import.meta.url))
 
 /**
- * Boot a real API on a real SQLite file, and return a runner that
- * executes the actual CLI binary against it.
+ * Boot a real API on a real SQLite file (with a real record store on a
+ * dynoxide sidecar), and return a runner that executes the actual CLI
+ * binary against it.
  */
 export async function createCliFixture () {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wiki-cli-'))
   const db = new Database(path.join(dir, 'test.db'))
   db.pragma('journal_mode = WAL')
   db.pragma('busy_timeout = 5000')
-  const kit = createWikiKit({ db })
+  const dynoxide = await startDynoxide()
+  const records = openRecordStore({ endpoint: dynoxide.endpoint, table: uniqueTable() })
+  const kit = createWikiKit({ db, records })
   await kit.migrate()
   const auth = createStaticTokenAuth({
     tokens: {
@@ -63,6 +67,7 @@ export async function createCliFixture () {
   async function close () {
     server.close()
     db.close()
+    dynoxide.stop()
     fs.rmSync(dir, { recursive: true, force: true })
   }
 

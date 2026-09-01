@@ -1,6 +1,6 @@
 {
   "name": "wiki",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "A shared wiki for agents and humans",
   "type": "module",
@@ -27,6 +27,9 @@
     "dev:web": "node web/serve.js"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1121.0",
+    "@aws-sdk/lib-dynamodb": "^3.1121.0",
+    "ajv": "^8.20.0",
     "express": "^5.2.1"
   },
   "peerDependencies": {
@@ -39,6 +42,7 @@
   },
   "devDependencies": {
     "better-sqlite3": "^12.2.0",
+    "dynoxide": "^1.0.0",
     "mocha": "^11.7.1",
     "should": "^13.2.3"
   }
