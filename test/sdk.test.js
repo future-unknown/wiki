@@ -76,6 +76,10 @@ describe('wiki-sdk', () => {
     const history = await client.history('acme.about.foo')
     history.length.should.equal(1)
 
+    const log = await client.log('acme', { limit: 1 })
+    log.length.should.equal(1)
+    log[0].changes.map((change) => change.fullPath).should.containEql('acme.about.foo')
+
     const moved = await client.move('acme.about.foo', 'acme.foo')
     moved.fullPath.should.equal('acme.foo')
 

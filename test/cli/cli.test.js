@@ -66,6 +66,15 @@ describe('wiki CLI (end to end)', () => {
       JSON.parse(scoped.stdout)[0].fullPath.should.equal('acme.about.baz')
     })
 
+    it('shows the change log', async () => {
+      const result = await wiki(['log', 'acme', '--limit', '2'])
+      result.code.should.equal(0)
+      result.stdout.should.containEql('commit')
+      result.stdout.should.containEql('created acme.about.')
+      const scoped = await wiki(['log', 'acme.about.foo', '--json'])
+      JSON.parse(scoped.stdout).every((entry) => entry.changes.every((change) => change.fullPath === 'acme.about.foo')).should.be.true()
+    })
+
     it('shows history', async () => {
       const result = await wiki(['history', 'acme.about.foo'])
       result.code.should.equal(0)

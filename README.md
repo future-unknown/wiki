@@ -142,6 +142,7 @@ wiki set <path> [content]    # inline arg, stdin/heredoc, or --file (one only)
 wiki tree <path>             # --depth, --commit, --at
 wiki search <path> <query>   # FTS over the subtree; --limit
 wiki history <path>          # revisions, newest first
+wiki log <path>              # the wiki's change log: commits and the pages they touched; --limit, --before
 wiki move <from> <to>        # subtree moves, identity preserved
 wiki rm <path>               # --recursive for subtrees, --if-commit for safety
 wiki meta <path> [json]      # merge metadata fields; null removes; --replace swaps

@@ -198,6 +198,21 @@ describe('wiki-api', () => {
       history.result.length.should.equal(2)
       history.result[0].commit.message.should.equal('edit')
     })
+
+    it('returns the change log with full paths, scoped to a subtree', async () => {
+      const { rpc } = await createTestApi()
+      await seed(rpc)
+      await rpc('wiki.set', { path: 'acme.about.foo', content: 'v2', message: 'edit' })
+      const log = await rpc('wiki.log', { path: 'acme' })
+      log.result.length.should.equal(5)
+      log.result[0].message.should.equal('edit')
+      log.result[0].changes.map((change) => [change.kind, change.fullPath])
+        .should.deepEqual([['updated', 'acme.about.foo']])
+      log.result[4].changes[0].fullPath.should.equal('acme')
+      const scoped = await rpc('wiki.log', { path: 'acme.about.bar' })
+      scoped.result.length.should.equal(1)
+      scoped.result[0].changes[0].kind.should.equal('created')
+    })
   })
 
   describe('wiki.move / wiki.remove', () => {

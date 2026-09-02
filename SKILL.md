@@ -147,6 +147,20 @@ messages. `--limit <n>` caps entries. Use commit ids from here with
 wiki history acme.about.foo --json
 ```
 
+### Log — `wiki log <path>`
+
+The wiki's change log, newest first: each commit with its actor,
+message, and the pages it touched, each marked `created`, `updated`,
+`moved`, or `deleted`. A subtree path scopes it to changes under that
+page. `--limit <n>` caps commits; `--before <commit id>` continues an
+earlier listing. Record writes (`wiki put`) are not commits and do not
+appear here.
+
+```bash
+wiki log acme --limit 20
+wiki log acme.about --json
+```
+
 ### Move — `wiki move <from> <to>`
 
 Moves or renames a node together with its entire subtree. Identity and
