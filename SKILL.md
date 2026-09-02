@@ -224,15 +224,18 @@ wiki put acme.usage --ts 2026-08-01T00:00:00Z < record.json
 
 With a key (the key-field value, or `_id` on an unkeyed page): exactly
 that record. Without one: the page's records in sort order — time on
-unkeyed pages, key on keyed ones. `--latest` returns only the newest
-(and combines with nothing else); `--since <iso>` / `--until <iso>`
-bound the range; `--limit <n>` caps it; when more records remain the
-result carries a continuation token — pass it back with
-`--cursor <token>` to continue.
+unkeyed pages, key on keyed ones — or `--reverse` for newest first on
+a log (highest key first on a keyed page). `--latest` returns only the
+newest (and combines with nothing else); `--since <iso>` /
+`--until <iso>` bound the range; `--limit <n>` caps it; when more
+records remain the result carries a continuation token — pass it back
+with `--cursor <token>` to continue. To read recent activity, prefer
+`--reverse --limit <n>` over paging forward from the beginning.
 
 ```bash
 wiki data acme.tasks t-41 --json
 wiki data acme.usage --since 2026-08-01T00:00:00Z --limit 100
+wiki data acme.usage --reverse --limit 20
 wiki data acme.usage --latest
 ```
 

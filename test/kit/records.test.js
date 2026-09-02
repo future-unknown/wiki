@@ -85,6 +85,39 @@ describe('records', () => {
       const rest = await kit.getRecords({ wikiId, path: 'about.foo', cursor: first.cursor })
       rest.records.map((record) => record.day).should.deepEqual([3, 4, 5])
       should(rest.cursor).be.undefined()
+
+      // a limit the records meet exactly reports no continuation
+      const exact = await kit.getRecords({ wikiId, path: 'about.foo', cursor: first.cursor, limit: 3 })
+      exact.records.map((record) => record.day).should.deepEqual([3, 4, 5])
+      should(exact.cursor).be.undefined()
+    })
+
+    it('reads in reverse — newest first — and pages on from there', async () => {
+      const { kit } = await createRecordsKit()
+      const { wikiId } = await seedAcme(kit)
+      for (let day = 1; day <= 5; day += 1) {
+        await kit.putRecord({
+          wikiId, path: 'about.foo', value: { day }, ts: `2026-01-0${day}T00:00:00Z`, actor: agent
+        })
+      }
+
+      const first = await kit.getRecords({ wikiId, path: 'about.foo', reverse: true, limit: 2 })
+      first.records.map((record) => record.day).should.deepEqual([5, 4])
+      should(first.cursor).be.a.String()
+
+      const rest = await kit.getRecords({ wikiId, path: 'about.foo', reverse: true, cursor: first.cursor })
+      rest.records.map((record) => record.day).should.deepEqual([3, 2, 1])
+      should(rest.cursor).be.undefined()
+
+      const bounded = await kit.getRecords({
+        wikiId, path: 'about.foo', reverse: true, since: '2026-01-02T00:00:00Z', until: '2026-01-04T00:00:00Z'
+      })
+      bounded.records.map((record) => record.day).should.deepEqual([4, 3, 2])
+
+      await kit.getRecords({ wikiId, path: 'about.foo', latest: true, reverse: true })
+        .should.be.rejectedWith(ValidationError)
+      await kit.getRecords({ wikiId, path: 'about.foo', reverse: 'yes' })
+        .should.be.rejectedWith(ValidationError)
     })
 
     it('normalizes backfilled timestamps to canonical ISO form', async () => {

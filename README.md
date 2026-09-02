@@ -147,7 +147,7 @@ wiki rm <path>               # --recursive for subtrees, --if-commit for safety
 wiki meta <path> [json]      # merge metadata fields; null removes; --replace swaps
 wiki put <path> [json]       # write a record: keyed pages upsert, unkeyed append
 wiki del <path> <key>        # delete one record by key (or _id on unkeyed pages)
-wiki data <path> [key]       # read records; --latest, --since/--until, --limit, --cursor
+wiki data <path> [key]       # read records; --latest, --reverse, --since/--until, --limit, --cursor
 ```
 
 Pages take **notes** — append-only feedback attached to the page's
