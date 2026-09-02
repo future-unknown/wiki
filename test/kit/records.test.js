@@ -296,6 +296,28 @@ describe('records', () => {
       should(past.records).be.undefined()
     })
 
+    it('builds the summary for an existing store on migrate, once', async () => {
+      const { kit, db } = await createRecordsKit()
+      const { wikiId } = await seedAcme(kit)
+      await kit.putRecord({ wikiId, path: 'about.foo', value: { n: 1 }, ts: '2026-01-01T00:00:00Z', actor: agent })
+      await kit.putRecord({ wikiId, path: 'about.foo', value: { n: 2 }, ts: '2026-01-02T00:00:00Z', actor: agent })
+      await kit.putRecord({ wikiId, path: 'about', value: { n: 3 }, ts: '2026-01-03T00:00:00Z', actor: agent })
+
+      // an upgrade finds records but no projection
+      db.prepare('DELETE FROM node_records').run()
+      await kit.migrate()
+      const rows = db.prepare('SELECT count, latest_ts FROM node_records ORDER BY count').all()
+      rows.should.deepEqual([
+        { count: 1, latest_ts: '2026-01-03T00:00:00.000Z' },
+        { count: 2, latest_ts: '2026-01-02T00:00:00.000Z' }
+      ])
+
+      // a populated projection is not rebuilt
+      db.prepare('UPDATE node_records SET count = 7').run()
+      await kit.migrate()
+      db.prepare('SELECT MIN(count) AS c FROM node_records').get().c.should.equal(7)
+    })
+
     it('re-syncs the summary from a full read', async () => {
       const { kit, db } = await createRecordsKit()
       const { wikiId } = await seedAcme(kit)
