@@ -261,6 +261,59 @@ describe('records', () => {
     })
   })
 
+  describe('record summary', () => {
+    it('tells the tree how many records a page carries and the latest stamp', async () => {
+      const { kit } = await createRecordsKit()
+      const { wikiId } = await seedAcme(kit)
+      await kit.setNode({ wikiId, path: 'about.tasks', content: 'tasks', metadata: { key: 'id' }, actor: agent })
+
+      const summaryOf = async (path) => {
+        const tree = await kit.getTree({ wikiId, path: '' })
+        const find = (node) => (node.path === path ? node : node.children.map(find).find(Boolean))
+        return find(tree).records
+      }
+
+      // nothing yet: null, not zero
+      should(await summaryOf('about.foo')).be.null()
+
+      await kit.putRecord({ wikiId, path: 'about.foo', value: { n: 1 }, ts: '2026-01-02T00:00:00Z', actor: agent })
+      await kit.putRecord({ wikiId, path: 'about.foo', value: { n: 2 }, ts: '2026-01-01T00:00:00Z', actor: agent })
+      ;(await summaryOf('about.foo')).should.deepEqual({ count: 2, latestTs: '2026-01-02T00:00:00.000Z' })
+
+      // a keyed page counts keys, not writes
+      await kit.putRecord({ wikiId, path: 'about.tasks', value: { id: 't-1', s: 'open' }, actor: agent })
+      await kit.putRecord({ wikiId, path: 'about.tasks', value: { id: 't-1', s: 'done' }, actor: agent })
+      await kit.putRecord({ wikiId, path: 'about.tasks', value: { id: 't-2', s: 'open' }, actor: agent, ifVersion: undefined })
+      ;(await summaryOf('about.tasks')).count.should.equal(2)
+      const versioned = await kit.getRecords({ wikiId, path: 'about.tasks', key: 't-2' })
+      await kit.putRecord({ wikiId, path: 'about.tasks', value: { id: 't-2', s: 'done' }, actor: agent, ifVersion: versioned.record._v })
+      ;(await summaryOf('about.tasks')).count.should.equal(2)
+
+      // deletion counts down; history carries no summary
+      await kit.deleteRecord({ wikiId, path: 'about.tasks', key: 't-1', actor: agent })
+      ;(await summaryOf('about.tasks')).count.should.equal(1)
+      const past = await kit.getTree({ wikiId, path: '', commitId: 1 })
+      should(past.records).be.undefined()
+    })
+
+    it('re-syncs the summary from a full read', async () => {
+      const { kit, db } = await createRecordsKit()
+      const { wikiId } = await seedAcme(kit)
+      await kit.putRecord({ wikiId, path: 'about.foo', value: { n: 1 }, actor: agent })
+      await kit.putRecord({ wikiId, path: 'about.foo', value: { n: 2 }, actor: agent })
+      // drift, as retention expiry in the store would cause
+      db.prepare('UPDATE node_records SET count = 9').run()
+
+      // a bounded read is not the whole truth
+      await kit.getRecords({ wikiId, path: 'about.foo', limit: 1 })
+      db.prepare('SELECT count FROM node_records').get().count.should.equal(9)
+
+      // a full read is
+      await kit.getRecords({ wikiId, path: 'about.foo' })
+      db.prepare('SELECT count FROM node_records').get().count.should.equal(2)
+    })
+  })
+
   describe('schema enforcement', () => {
     it('validates records against metadata.schema on put', async () => {
       const { kit } = await createRecordsKit()

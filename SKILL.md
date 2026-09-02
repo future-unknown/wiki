@@ -118,7 +118,9 @@ wiki meta acme.usage '{"retain": null}'
 
 Shows the hierarchy with one-line previews. Scope it to any subtree and limit
 it with `--depth <n>`. Supports `--commit` / `--at` for historical trees and
-`--json` for the full structured tree.
+`--json` for the full structured tree, where each page carries `records`
+— `{ count, latestTs }` when the page holds records, `null` otherwise —
+so you can find the pages that carry data without reading each one.
 
 ```bash
 wiki tree acme --depth 2

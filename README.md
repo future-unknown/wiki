@@ -225,6 +225,13 @@ and content, updated inside the same transaction as every mutation. It is
 replaceable; the architecture allows future projections (e.g. embeddings)
 without schema changes.
 
+`node_records` is a projection over the record store: per page, how many
+records it holds and the latest stamp among them. The kit moves it on every
+put and delete and re-syncs it from any full read (retention expiry happens
+in the store alone, so a page under retention can overcount until its next
+full read). Current trees carry it as each node's `records`; historical
+trees carry none.
+
 Key invariants: the root node's id *is* the wiki id (`id = wiki_id`,
 `parent_id IS NULL`, `path = ''`); node ids are identity, paths are only
 addresses; every semantic change gets a revision; descendants of a moved node
