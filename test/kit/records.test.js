@@ -348,6 +348,28 @@ describe('records', () => {
       latest.at.should.be.above(afterPut.at)
 
       await kit.getWikiActivity({ wikiId: 'nope' }).should.be.rejectedWith(NotFoundError)
+
+      // reading is not activity: a full read re-syncs the summary but moves nothing
+      const before = await kit.getWikiActivity({ wikiId })
+      await kit.getRecords({ wikiId, path: 'about.foo' })
+      const afterRead = await kit.getWikiActivity({ wikiId })
+      afterRead.should.deepEqual(before)
+    })
+
+    it('learns write times and writers for rows that predate them, on migrate', async () => {
+      const { kit, db } = await createRecordsKit()
+      const { wikiId } = await seedAcme(kit)
+      const other = { type: 'agent', id: 'agent_other', onBehalfOf: null }
+      await kit.putRecord({ wikiId, path: 'about.foo', value: { n: 1 }, ts: '2026-01-01T00:00:00Z', actor: agent })
+      await kit.putRecord({ wikiId, path: 'about.foo', value: { n: 2 }, ts: '2026-01-02T00:00:00Z', actor: other })
+      // as an upgraded store looks: summary rows without the newer columns
+      db.prepare('UPDATE node_records SET written_at = NULL, last_actor = NULL').run()
+      should((await kit.getWikiActivity({ wikiId })).recorded).be.null()
+
+      await kit.migrate()
+      const activity = await kit.getWikiActivity({ wikiId })
+      activity.recorded.at.should.equal('2026-01-02T00:00:00.000Z')
+      activity.recorded.actor.id.should.equal(other.id)
     })
 
     it('re-syncs the summary from a full read', async () => {
