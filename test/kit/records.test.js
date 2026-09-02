@@ -318,6 +318,38 @@ describe('records', () => {
       db.prepare('SELECT MIN(count) AS c FROM node_records').get().c.should.equal(7)
     })
 
+    it('reports when a wiki last changed and by whom, with own changes set aside', async () => {
+      const { kit } = await createRecordsKit()
+      const { wikiId } = await seedAcme(kit)
+      const seeded = await kit.getWikiActivity({ wikiId })
+      seeded.authored.actor.id.should.equal(human.id)
+      should(seeded.recorded).be.null()
+      seeded.at.should.equal(seeded.authored.at)
+
+      const other = { type: 'agent', id: 'agent_other', onBehalfOf: null }
+      await kit.putRecord({ wikiId, path: 'about.foo', value: { n: 1 }, actor: other })
+      const afterPut = await kit.getWikiActivity({ wikiId })
+      afterPut.recorded.actor.id.should.equal(other.id)
+      afterPut.at.should.equal(afterPut.recorded.at)
+      afterPut.othersAt.should.equal(afterPut.at)
+
+      // one's own writes are not news to oneself; everyone else's still are
+      const forOther = await kit.getWikiActivity({ wikiId, except: other.id })
+      forOther.othersAt.should.equal(seeded.authored.at)
+      const forHuman = await kit.getWikiActivity({ wikiId, except: human.id })
+      forHuman.othersAt.should.equal(afterPut.recorded.at)
+
+      // work done on someone's behalf is theirs too (the test agent acts for the human)
+      await kit.setNode({ wikiId, path: 'about.bar', content: 'bar', actor: agent })
+      await kit.putRecord({ wikiId, path: 'about.bar', value: { n: 2 }, actor: agent })
+      const stillForHuman = await kit.getWikiActivity({ wikiId, except: human.id })
+      stillForHuman.othersAt.should.equal(afterPut.recorded.at)
+      const latest = await kit.getWikiActivity({ wikiId })
+      latest.at.should.be.above(afterPut.at)
+
+      await kit.getWikiActivity({ wikiId: 'nope' }).should.be.rejectedWith(NotFoundError)
+    })
+
     it('re-syncs the summary from a full read', async () => {
       const { kit, db } = await createRecordsKit()
       const { wikiId } = await seedAcme(kit)
