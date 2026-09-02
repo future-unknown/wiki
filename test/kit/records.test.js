@@ -349,11 +349,29 @@ describe('records', () => {
 
       await kit.getWikiActivity({ wikiId: 'nope' }).should.be.rejectedWith(NotFoundError)
 
-      // reading is not activity: a full read re-syncs the summary but moves nothing
+      // reading is not activity: a full read re-syncs the summary but moves nothing,
+      // and a read of a page with no records leaves no trace at all
       const before = await kit.getWikiActivity({ wikiId })
       await kit.getRecords({ wikiId, path: 'about.foo' })
+      await kit.getRecords({ wikiId, path: 'about' })
       const afterRead = await kit.getWikiActivity({ wikiId })
       afterRead.should.deepEqual(before)
+      const tree = await kit.getTree({ wikiId, path: '' })
+      should(tree.children.find((node) => node.path === 'about').records).be.null()
+    })
+
+    it('never counts a summary row without a writer as someone else’s activity', async () => {
+      const { kit, db } = await createRecordsKit()
+      const { wikiId } = await seedAcme(kit)
+      await kit.putRecord({ wikiId, path: 'about.foo', value: { n: 1 }, actor: agent })
+      db.prepare('UPDATE node_records SET last_actor = NULL').run()
+      // the human's own commits and a record of unknown authorship: nothing is news to the human
+      const activity = await kit.getWikiActivity({ wikiId, except: human.id })
+      should(activity.recorded).not.be.null()
+      should(activity.othersAt).be.null()
+      // to anyone else, the human's commits still are
+      const other = await kit.getWikiActivity({ wikiId, except: 'someone_else' })
+      other.othersAt.should.equal(other.authored.at)
     })
 
     it('learns write times and writers for rows that predate them, on migrate', async () => {
