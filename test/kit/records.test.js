@@ -360,6 +360,31 @@ describe('records', () => {
       should(tree.children.find((node) => node.path === 'about').records).be.null()
     })
 
+    it('counts the week’s commits, by day, and the people behind them', async () => {
+      const { kit } = await createRecordsKit()
+      const { wikiId } = await seedAcme(kit)
+      const seeded = await kit.getWikiActivity({ wikiId })
+      seeded.commits.week.should.be.above(0)
+      seeded.commits.day.should.equal(seeded.commits.week)
+      seeded.commits.days.should.have.length(7)
+      seeded.commits.days[6].should.equal(seeded.commits.week)
+      seeded.commits.days.slice(0, 6).should.deepEqual([0, 0, 0, 0, 0, 0])
+      seeded.people.week.should.equal(1)
+
+      // the agent acts for the human: still one person; a stranger makes two
+      await kit.setNode({ wikiId, path: 'about.bar', content: 'bar', actor: agent })
+      const other = { type: 'agent', id: 'agent_other', onBehalfOf: null }
+      await kit.setNode({ wikiId, path: 'about.baz', content: 'baz', actor: other })
+      const later = await kit.getWikiActivity({ wikiId })
+      later.commits.week.should.equal(seeded.commits.week + 2)
+      later.people.week.should.equal(2)
+
+      // records are stamped, not committed: a put moves nothing here
+      await kit.putRecord({ wikiId, path: 'about.foo', value: { n: 1 }, actor: other })
+      const afterPut = await kit.getWikiActivity({ wikiId })
+      afterPut.commits.should.deepEqual(later.commits)
+    })
+
     it('never counts a summary row without a writer as someone else’s activity', async () => {
       const { kit, db } = await createRecordsKit()
       const { wikiId } = await seedAcme(kit)
