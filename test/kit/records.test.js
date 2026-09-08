@@ -385,6 +385,26 @@ describe('records', () => {
       afterPut.commits.should.deepEqual(later.commits)
     })
 
+    it('counts commits since a moment, setting one actor’s own work aside', async () => {
+      const { kit } = await createRecordsKit()
+      const { wikiId } = await seedAcme(kit)
+      const all = await kit.countCommits({ wikiId })
+      all.should.be.above(0)
+      const mark = new Date().toISOString()
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      const other = { type: 'agent', id: 'agent_other', onBehalfOf: null }
+      await kit.setNode({ wikiId, path: 'about.bar', content: 'bar', actor: agent }) // for the human
+      await kit.setNode({ wikiId, path: 'about.baz', content: 'baz', actor: other })
+      ;(await kit.countCommits({ wikiId })).should.equal(all + 2)
+      ;(await kit.countCommits({ wikiId, since: mark })).should.equal(2)
+      // the human's own work — the agent acted for them — is not news to the human
+      ;(await kit.countCommits({ wikiId, since: mark, except: human.id })).should.equal(1)
+      ;(await kit.countCommits({ wikiId, since: mark, except: other.id })).should.equal(1)
+      ;(await kit.countCommits({ wikiId, since: new Date().toISOString() })).should.equal(0)
+      await kit.countCommits({ wikiId, since: 'yesterday' }).should.be.rejectedWith(ValidationError)
+      await kit.countCommits({ wikiId: 'nope' }).should.be.rejectedWith(NotFoundError)
+    })
+
     it('never counts a summary row without a writer as someone else’s activity', async () => {
       const { kit, db } = await createRecordsKit()
       const { wikiId } = await seedAcme(kit)
