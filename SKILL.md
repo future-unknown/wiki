@@ -39,14 +39,17 @@ The CLI reads `WIKI_URL` and `WIKI_TOKEN` from the environment (or
    read, and write it back with `--if-revision <revisionId>`.
 4. **On conflict, merge and retry.** If the write fails with a conflict
    (exit code 4), someone changed the node after you read it: reread it,
-   merge your change into the new state, and retry with the fresh
-   `revisionId`.
+   see exactly what they changed with `wiki diff`, merge your change into
+   the new state, and retry with the fresh `revisionId`.
 5. **Read narrowly.** Prefer targeted `wiki get` calls over dumping an entire
    large wiki with an unbounded `wiki tree`.
 6. **Prefer `--json`** whenever output will be consumed programmatically.
    Every meaningful command supports it.
 7. **Never use `--recursive` deletion** unless the task explicitly requires
    deleting a whole subtree.
+8. **Review changes as diffs.** To learn what an edit did — yours, another
+   agent's, or a person's — use `wiki diff` rather than reading and
+   comparing whole pages.
 
 ## The safe edit loop
 
@@ -62,7 +65,8 @@ wiki set acme.about.foo --if-revision 3f2a... <<'EOF'
 Updated documentation.
 EOF
 
-# 3. if that exits with code 4 (conflict): reread, merge, retry
+# 3. if that exits with code 4 (conflict): see the other change, reread, merge, retry
+wiki diff acme.about.foo         # what the other writer changed
 wiki get acme.about.foo --json   # fresh content + fresh revisionId
 ```
 
@@ -139,9 +143,10 @@ wiki search acme.architecture "tokens" --json
 
 ### History — `wiki history <path>`
 
-Lists a node's revisions, newest first, with commit ids, actors, and
-messages. `--limit <n>` caps entries. Use commit ids from here with
-`wiki get --commit` to read old versions.
+Lists a node's revisions, newest first, each with its commit id,
+revision id, actor, and message. `--limit <n>` caps entries. Use a
+commit id from here with `wiki get --commit` to read the page as it
+was, or with `wiki diff --commit` to see what that revision changed.
 
 ```bash
 wiki history acme.about.foo --json
@@ -149,17 +154,24 @@ wiki history acme.about.foo --json
 
 ### Diff — `wiki diff <path>`
 
-What a revision changed: the page's source against the revision before
-it, as a unified diff, after a commit line and any title, slug, or
-metadata changes. With no option it reads the latest revision;
-`--commit <id>` reads the page's revision at that commit (ids from
-`wiki history` or `wiki log`); `--revision <id>` addresses a revision
-directly. A first revision is all additions, a deletion all removals.
-`--json` returns the revision with its `previous`.
+Shows what one revision changed: a commit line (id, actor, message,
+and whether the revision created, updated, moved, or deleted the
+page), then any title, slug, or metadata change as `before -> after`,
+then a unified diff of the page's source against the revision before
+it. A page's first revision shows as all additions and a deletion as
+all removals; a move that left the content alone says so.
+
+With no option it reads the latest revision — the quickest answer to
+"what just happened to this page". `--commit <id>` reads the page's
+revision at that commit; `--revision <id>` addresses a revision
+directly (revision ids appear in `wiki history`, and in `wiki log
+--json`). The two are exclusive. `--json` returns the revision as data,
+with the revision before it under `previous`.
 
 ```bash
 wiki diff acme.about.foo
 wiki diff acme.about.foo --commit 12
+wiki diff acme.about.foo --revision 3f2a... --json
 ```
 
 ### Log — `wiki log <path>`
@@ -168,8 +180,9 @@ The wiki's change log, newest first: each commit with its actor,
 message, and the pages it touched, each marked `created`, `updated`,
 `moved`, or `deleted`. A subtree path scopes it to changes under that
 page. `--limit <n>` caps commits; `--before <commit id>` continues an
-earlier listing. Record writes (`wiki put`) are not commits and do not
-appear here.
+earlier listing. To see what a listed change did, pass its page and
+commit id to `wiki diff --commit`. Record writes (`wiki put`) are not
+commits and do not appear here.
 
 ```bash
 wiki log acme --limit 20
@@ -299,8 +312,9 @@ Link pages with wikilinks: `[[architecture.deployment]]`, or labeled,
 `[[docs.cli|the CLI guide]]`. Paths are the same wiki-relative dot-paths
 used everywhere else — links resolve within the wiki the page lives in.
 Inside a Markdown table cell, escape the label pipe — `[[path\|Label]]`
-— because tables split cells on a raw `|`. Wikilinks are plain text to the system — write them
-anywhere in page content; reading surfaces render them as navigation.
+— because tables split cells on a raw `|`. Wikilinks are plain text to
+the system — write them anywhere in page content; reading surfaces
+render them as navigation.
 
 To embed a whole page instead of linking it, put an embed on a line of
 its own:
