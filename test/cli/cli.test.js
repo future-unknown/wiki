@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { createCliFixture } from './helpers.js'
+import { commands } from '../../lib/cli/commands.js'
 
 describe('wiki CLI (end to end)', () => {
   let fixture
@@ -348,12 +349,19 @@ describe('wiki CLI (end to end)', () => {
       result.stderr.should.containEql('wiki:')
     })
 
-    it('shows help', async () => {
+    it('shows help that names every command, and each command’s options and examples', async () => {
       const help = await wiki(['help'])
       help.code.should.equal(0)
       help.stdout.should.containEql('usage: wiki <command>')
-      const commandHelp = await wiki(['set', '--help'])
-      commandHelp.stdout.should.containEql('wiki set <path> [content]')
+      for (const [name, definition] of Object.entries(commands)) {
+        help.stdout.should.containEql(`  ${definition.usage.replace(/^wiki /, '')}`)
+        help.stdout.should.containEql(definition.summary)
+        const commandHelp = await wiki([name, '--help'])
+        commandHelp.code.should.equal(0, commandHelp.stderr)
+        commandHelp.stdout.should.containEql(`usage: ${definition.usage}`)
+        for (const option of Object.keys(definition.options)) commandHelp.stdout.should.containEql(`--${option}`)
+        for (const example of definition.examples) commandHelp.stdout.should.containEql(example)
+      }
     })
   })
 })
