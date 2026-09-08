@@ -81,6 +81,40 @@ describe('wiki CLI (end to end)', () => {
       result.stdout.should.containEql('commit')
       result.stdout.should.containEql('agent:cli_test (for user_test)')
     })
+
+    it('shows what a revision changed', async () => {
+      const first = await wiki(['set', 'acme.about.diffy', 'line one\nline two\nline three\n', '--json'])
+      first.code.should.equal(0, first.stderr)
+      const created = JSON.parse(first.stdout).node
+      const second = await wiki(['set', 'acme.about.diffy', 'line one\nline 2\nline three\n', '--json'])
+      second.code.should.equal(0, second.stderr)
+
+      // the latest revision against the one before it, as a unified diff
+      const latest = await wiki(['diff', 'acme.about.diffy'])
+      latest.code.should.equal(0, latest.stderr)
+      latest.stdout.should.containEql('updated')
+      latest.stdout.should.containEql(`--- acme.about.diffy@c${created.commitId}`)
+      latest.stdout.should.containEql('-line two')
+      latest.stdout.should.containEql('+line 2')
+
+      // an earlier revision by commit: the first one is all additions
+      const earlier = await wiki(['diff', 'acme.about.diffy', '--commit', String(created.commitId)])
+      earlier.code.should.equal(0, earlier.stderr)
+      earlier.stdout.should.containEql('created')
+      earlier.stdout.should.containEql('--- /dev/null')
+      earlier.stdout.should.containEql('+line one')
+
+      // by revision id, as data
+      const asJson = await wiki(['diff', 'acme.about.diffy', '--revision', created.revisionId, '--json'])
+      asJson.code.should.equal(0, asJson.stderr)
+      const revision = JSON.parse(asJson.stdout)
+      revision.kind.should.equal('created')
+      revision.fullPath.should.equal('acme.about.diffy')
+      should(revision.previous).be.null()
+
+      const both = await wiki(['diff', 'acme.about.diffy', '--commit', '1', '--revision', 'x'])
+      both.code.should.equal(2)
+    })
   })
 
   describe('safe agent-edit workflow', () => {

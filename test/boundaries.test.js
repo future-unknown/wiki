@@ -91,8 +91,8 @@ describe('architectural boundaries', () => {
     assertLayer('lib/sdk', 'sdk', { allowedLayers: [], allowedPackages: [] })
   })
 
-  it('cli imports only the sdk', () => {
-    assertLayer('lib/cli', 'cli', { allowedLayers: ['sdk'], allowedPackages: [] })
+  it('cli imports only the sdk, and the diff renderer', () => {
+    assertLayer('lib/cli', 'cli', { allowedLayers: ['sdk'], allowedPackages: ['diff'] })
   })
 
   it('api imports only the kit, express, and the storage drivers', () => {

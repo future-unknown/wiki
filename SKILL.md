@@ -147,6 +147,21 @@ messages. `--limit <n>` caps entries. Use commit ids from here with
 wiki history acme.about.foo --json
 ```
 
+### Diff — `wiki diff <path>`
+
+What a revision changed: the page's source against the revision before
+it, as a unified diff, after a commit line and any title, slug, or
+metadata changes. With no option it reads the latest revision;
+`--commit <id>` reads the page's revision at that commit (ids from
+`wiki history` or `wiki log`); `--revision <id>` addresses a revision
+directly. A first revision is all additions, a deletion all removals.
+`--json` returns the revision with its `previous`.
+
+```bash
+wiki diff acme.about.foo
+wiki diff acme.about.foo --commit 12
+```
+
 ### Log — `wiki log <path>`
 
 The wiki's change log, newest first: each commit with its actor,
