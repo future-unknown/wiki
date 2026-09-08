@@ -97,6 +97,58 @@ describe('historical reconstruction', () => {
   })
 })
 
+describe('getRevision', () => {
+  it('returns a revision with its previous one, kind, and current path', async () => {
+    const { kit } = await createTestKit()
+    const { wikiId } = await seedAcme(kit)
+    const v1 = await kit.getNode({ wikiId, path: 'about.foo' })
+    const v2 = await kit.setNode({ wikiId, path: 'about.foo', content: 'foo v2', actor: human, message: 'second draft' })
+    const revision = await kit.getRevision({ wikiId, revisionId: v2.node.revisionId })
+    revision.revisionId.should.equal(v2.node.revisionId)
+    revision.path.should.equal('about.foo')
+    revision.kind.should.equal('updated')
+    revision.content.should.equal('foo v2')
+    revision.commit.message.should.equal('second draft')
+    revision.previous.revisionId.should.equal(v1.revisionId)
+    revision.previous.content.should.equal('This is all about foo')
+  })
+
+  it('has no previous revision for a first one, and reads it as created', async () => {
+    const { kit } = await createTestKit()
+    const { wikiId } = await seedAcme(kit)
+    const first = await kit.getNode({ wikiId, path: 'about.foo' })
+    const revision = await kit.getRevision({ wikiId, revisionId: first.revisionId })
+    revision.kind.should.equal('created')
+    should(revision.previous).be.null()
+  })
+
+  it('names the current path after a move, and reads a tombstone as deleted', async () => {
+    const { kit } = await createTestKit()
+    const { wikiId } = await seedAcme(kit)
+    const moved = await kit.moveNode({ wikiId, fromPath: 'about.foo', toPath: 'foo', actor: human })
+    const afterMove = await kit.getRevision({ wikiId, revisionId: moved.revisionId })
+    afterMove.kind.should.equal('moved')
+    afterMove.path.should.equal('foo')
+    afterMove.previous.slug.should.equal('foo')
+    const removed = await kit.deleteNode({ wikiId, path: 'foo', actor: human })
+    const history = await kit.getNodeHistory({ wikiId, path: 'foo' })
+    history[0].commitId.should.equal(removed.commitId)
+    const tombstone = await kit.getRevision({ wikiId, revisionId: history[0].revisionId })
+    tombstone.kind.should.equal('deleted')
+    tombstone.path.should.equal('foo')
+    tombstone.previous.revisionId.should.equal(moved.revisionId)
+  })
+
+  it('rejects an unknown or foreign revision id', async () => {
+    const { kit } = await createTestKit()
+    const a = await kit.createWiki({ slug: 'a', content: 'a', actor: human })
+    const b = await kit.createWiki({ slug: 'b', content: 'b', actor: human })
+    await kit.getRevision({ wikiId: a.id, revisionId: 'nope' }).should.be.rejectedWith(NotFoundError)
+    await kit.getRevision({ wikiId: a.id, revisionId: b.revisionId }).should.be.rejectedWith(NotFoundError)
+    await kit.getRevision({ wikiId: a.id, revisionId: '' }).should.be.rejectedWith(ValidationError)
+  })
+})
+
 describe('getCommit', () => {
   it('returns commit metadata and touched revisions', async () => {
     const { kit } = await createTestKit()

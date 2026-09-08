@@ -161,6 +161,20 @@ describe('wiki-api', () => {
       const commit = await rpc('wiki.getCommit', { wiki: 'acme', commitId: node.result.commitId })
       commit.result.actor.should.deepEqual({ type: 'agent', id: 'agent_9', onBehalfOf: 'user_123' })
     })
+
+    it('reads a revision with its previous one by id', async () => {
+      const { rpc } = await createTestApi()
+      await rpc('wiki.set', { path: 'acme', content: 'root' })
+      const first = await rpc('wiki.set', { path: 'acme.doc', content: 'v1' })
+      const second = await rpc('wiki.set', { path: 'acme.doc', content: 'v2', message: 'again' })
+      const revision = await rpc('wiki.revision', { wiki: 'acme', revisionId: second.result.node.revisionId })
+      revision.result.fullPath.should.equal('acme.doc')
+      revision.result.kind.should.equal('updated')
+      revision.result.content.should.equal('v2')
+      revision.result.previous.revisionId.should.equal(first.result.node.revisionId)
+      const missing = await rpc('wiki.revision', { wiki: 'acme', revisionId: 'nope' })
+      missing.error.data.code.should.equal('NOT_FOUND')
+    })
   })
 
   describe('wiki.tree / wiki.search / wiki.history', () => {

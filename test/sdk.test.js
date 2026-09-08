@@ -92,6 +92,10 @@ describe('wiki-sdk', () => {
     const commit = await client.getCommit('acme', foo.commitId)
     commit.actor.id.should.equal('sdk_test')
 
+    const revision = await client.revision('acme', moved.revisionId)
+    revision.kind.should.equal('moved')
+    revision.fullPath.should.equal('acme.foo')
+
     const wikis = await client.list()
     wikis.map((wiki) => wiki.slug).should.deepEqual(['acme'])
 

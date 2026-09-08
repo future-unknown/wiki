@@ -247,6 +247,12 @@ and derive paths by walking historical `parent_id + slug` chains. This powers
 `wiki get/tree --commit/--at` and the `wiki.snapshot` API. Current reads
 never touch history; they use the `nodes` projection.
 
+A single revision is read by id with `wiki.revision` (`kit.getRevision`):
+it returns the revision with its node's current path, what it did
+(`kind`: created, updated, moved, deleted), and `previous` — the revision
+before it on the same node, or null for a first one. That pair is what a
+diff reads; revision ids come from `wiki.history` and `wiki.log`.
+
 ## Concurrency model
 
 - **Node revision ids** are the normal optimistic-concurrency mechanism.
