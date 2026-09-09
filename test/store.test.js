@@ -22,6 +22,16 @@ after(() => {
 
 const PRINCIPAL = { actor: { type: 'human', id: 'ada', onBehalfOf: null } }
 
+// A background refresh lands when it lands: wait for the state to say
+// so, bounded, rather than guessing a sleep.
+async function until (check, { timeout = 3000 } = {}) {
+  const deadline = Date.now() + timeout
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error('condition not met in time')
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+}
+
 async function seeded () {
   const db = new Database(':memory:')
   const kit = createWikiKit({ db, records: openRecordStore({ endpoint: dynoxide.endpoint, table: uniqueTable() }) })
@@ -119,11 +129,10 @@ describe('wiki/store', () => {
     const record = await store.getState().put('tasks', { id: 't1', title: 'Write the store' })
     record.id.should.equal('t1')
     record._actor.id.should.equal('ada')
-    await new Promise((resolve) => setTimeout(resolve, 50))
+    await until(() => store.getState().data.length === 1)
     store.getState().data.map((entry) => entry.id).should.deepEqual(['t1'])
     await store.getState().del('tasks', 't1')
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    store.getState().data.length.should.equal(0)
+    await until(() => store.getState().data.length === 0)
   })
 
   it('searches the wiki, and clears on an empty query', async () => {
