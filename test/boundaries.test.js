@@ -105,12 +105,16 @@ describe('architectural boundaries', () => {
     })
   })
 
+  it('store imports only zustand (a consumer-side layer, like the sdk)', () => {
+    assertLayer('lib/store', 'store', { allowedLayers: [], allowedPackages: ['zustand/vanilla'] })
+  })
+
   it('web never touches kit or api', () => {
     assertLayer('web', 'web', { allowedLayers: ['sdk'], allowedPackages: [] })
   })
 
   it('SQL statements stay inside kit', () => {
-    for (const dir of ['lib/api', 'lib/sdk', 'lib/cli', 'web']) {
+    for (const dir of ['lib/api', 'lib/sdk', 'lib/store', 'lib/cli', 'web']) {
       for (const file of sourceFiles(dir)) {
         const source = fs.readFileSync(file, 'utf8')
         should(/\b(SELECT\s+\*|INSERT\s+INTO|UPDATE\s+\w+\s+SET|DELETE\s+FROM)\b/.test(source))
