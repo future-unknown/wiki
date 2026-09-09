@@ -105,6 +105,20 @@ for (const [name, handler] of Object.entries(methods)) {
 }
 ```
 
+Every method is declared — params with their types, what it returns, the
+action it exercises — in `METHOD_DECLARATIONS`, and every call is checked
+against its declaration before the handler runs. A host that publishes a
+discovery document reads the same table, so what a client is told and
+what the server checks cannot drift:
+
+```js
+import { METHOD_DECLARATIONS, validateParams } from 'wiki/api'
+
+METHOD_DECLARATIONS['wiki.get']
+// { params: { path: 'string', commitId: 'number?', at: 'string?' }, returns: 'page', action: 'read' }
+validateParams('wiki.get', { path: 'docs' })   // throws ValidationError naming the param
+```
+
 ## Development
 
 Requires Node.js 22+ and pnpm.

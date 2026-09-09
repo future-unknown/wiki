@@ -465,6 +465,47 @@ describe('wiki-api', () => {
     })
   })
 
+  describe('method declarations', () => {
+    it('declare every method in the table, and nothing else', async () => {
+      const { kit } = await createTestApi()
+      const { createWikiMethods, METHOD_DECLARATIONS } = await import('../lib/api/index.js')
+      const methods = createWikiMethods({ kit })
+      Object.keys(methods).sort().should.deepEqual(Object.keys(METHOD_DECLARATIONS).sort())
+      for (const declaration of Object.values(METHOD_DECLARATIONS)) {
+        declaration.should.have.properties(['params', 'returns', 'action'])
+        ;['read', 'write', 'put', 'delete'].should.containEql(declaration.action)
+      }
+      METHOD_DECLARATIONS['wiki.getCommit'].params.commitId.should.equal('number?')
+      METHOD_DECLARATIONS['wiki.put'].params.value.should.equal('object')
+    })
+
+    it('refuse a call whose params miss or mistype what is declared, naming the param', async () => {
+      const { kit } = await createTestApi()
+      const { createWikiMethods } = await import('../lib/api/index.js')
+      const { ValidationError } = await import('../lib/kit/index.js')
+      const methods = createWikiMethods({ kit })
+      const principal = { actor: { type: 'human', id: 'host_user', onBehalfOf: null } }
+      await methods['wiki.set'](principal, { path: 'declared', content: 'x' })
+
+      await methods['wiki.get'](principal, {}).should.be.rejectedWith(ValidationError, { message: 'path is required', details: { param: 'path' } })
+      await methods['wiki.get'](principal, { path: 'declared', commitId: '1' }).should.be.rejectedWith(ValidationError, { message: 'commitId must be a number', details: { param: 'commitId' } })
+      await methods['wiki.put'](principal, { path: 'declared', value: [1] }).should.be.rejectedWith(ValidationError, { message: 'value must be an object', details: { param: 'value' } })
+      await methods['wiki.data'](principal, { path: 'declared', reverse: 'yes' }).should.be.rejectedWith(ValidationError, { message: 'reverse must be a boolean', details: { param: 'reverse' } })
+      await methods['wiki.get'](principal, ['declared']).should.be.rejectedWith(ValidationError, { message: 'params must be an object' })
+      // optional params may be null or absent
+      const page = await methods['wiki.get'](principal, { path: 'declared', commitId: null })
+      page.content.should.equal('x')
+    })
+
+    it('validateParams stands alone for hosts that check before dispatch', async () => {
+      const { validateParams } = await import('../lib/api/index.js')
+      const { ValidationError } = await import('../lib/kit/index.js')
+      ;(() => validateParams('wiki.revision', { wiki: 'w' })).should.throw(ValidationError, { details: { param: 'revisionId' } })
+      ;(() => validateParams('wiki.revision', { wiki: 'w', revisionId: 'r' })).should.not.throw()
+      ;(() => validateParams('wiki.nope', {})).should.throw(/no such method/)
+    })
+  })
+
   describe('method table (host embedding)', () => {
     it('exposes transport-neutral methods for a host RPC server', async () => {
       const { kit } = await createTestApi()
