@@ -476,6 +476,11 @@ describe('wiki-api', () => {
         ;['read', 'write', 'put', 'delete'].should.containEql(declaration.action)
       }
       METHOD_DECLARATIONS['wiki.getCommit'].params.commitId.should.equal('number?')
+      // and say, in words, what each does and what each param means
+      for (const [name, declaration] of Object.entries(METHOD_DECLARATIONS)) {
+        declaration.describe.should.match(/\S+ .*\.$/, name)
+        Object.keys(declaration.about).sort().should.deepEqual(Object.keys(declaration.params).sort(), name)
+      }
       METHOD_DECLARATIONS['wiki.put'].params.value.should.equal('object')
     })
 

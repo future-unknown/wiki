@@ -178,8 +178,9 @@ describe('wiki/store', () => {
   })
 
   it('discover fetches the wiki document from the host, and says when there is none', async () => {
-    const fetch = async (url) => {
+    const fetch = async (url, options) => {
       url.should.equal('https://rpc.example.test/rpc/acme_labs')
+      options.headers.accept.should.equal('application/json')
       return { ok: true, json: async () => ({ wiki: { slug: 'acme_labs' }, methods: {}, pages: {} }) }
     }
     const document = await discover({ baseUrl: 'https://rpc.example.test/', wiki: 'acme_labs', fetch })

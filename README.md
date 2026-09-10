@@ -106,7 +106,8 @@ for (const [name, handler] of Object.entries(methods)) {
 ```
 
 Every method is declared — params with their types, what it returns, the
-action it exercises — in `METHOD_DECLARATIONS`, and every call is checked
+action it exercises, and in words what it does (`describe`) and what each
+param means (`about`) — in `METHOD_DECLARATIONS`, and every call is checked
 against its declaration before the handler runs. A host that publishes a
 discovery document reads the same table, so what a client is told and
 what the server checks cannot drift:
@@ -115,7 +116,8 @@ what the server checks cannot drift:
 import { METHOD_DECLARATIONS, validateParams } from 'wiki/api'
 
 METHOD_DECLARATIONS['wiki.get']
-// { params: { path: 'string', commitId: 'number?', at: 'string?' }, returns: 'page', action: 'read' }
+// { describe: 'Read one page: …', params: { path: 'string', commitId: 'number?', at: 'string?' },
+//   about: { path: 'the full path of the page, wiki slug first', … }, returns: 'page', action: 'read' }
 validateParams('wiki.get', { path: 'docs' })   // throws ValidationError naming the param
 ```
 
