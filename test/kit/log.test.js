@@ -31,6 +31,21 @@ describe('getLog', () => {
     log[0].id.should.be.above(log[1].id)
   })
 
+  it('carries the surface a commit came through when the host names it', async () => {
+    const { kit } = await createTestKit()
+    const { wikiId } = await seedAcme(kit)
+    const assistant = { type: 'agent', id: 'assistant', onBehalfOf: 'user_test', via: 'assistant' }
+    await kit.setNode({ wikiId, path: 'about.foo', content: 'v2', actor: assistant })
+
+    const [latest, before] = await kit.getLog({ wikiId, limit: 2 })
+    latest.actor.should.deepEqual(assistant)
+    before.actor.should.deepEqual(human)
+    const history = await kit.getNodeHistory({ wikiId, path: 'about.foo' })
+    history[0].commit.actor.should.deepEqual(assistant)
+    const activity = await kit.getWikiActivity({ wikiId, except: 'user_test' })
+    activity.authored.actor.should.deepEqual(assistant)
+  })
+
   it('reads a node written again after deletion as created', async () => {
     const { kit } = await createTestKit()
     const { wikiId } = await seedAcme(kit)

@@ -256,7 +256,8 @@ stdout carries only requested data; errors go to stderr.
 Three central tables, all owned by `lib/kit`:
 
 - **`commits`** — one row per atomic wiki mutation (integer autoincrement id,
-  wiki id, trusted actor identity, message, UTC timestamp). A commit is a
+  wiki id, trusted actor identity, the surface it came through (`actor.via`,
+  when the host names one), message, UTC timestamp). A commit is a
   complete-state boundary for its wiki.
 - **`nodes`** — the *current-state projection*: one row per node identity
   (UUID) with parent, slug, materialized path, title, content, JSON metadata,
