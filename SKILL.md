@@ -50,6 +50,13 @@ The CLI reads `WIKI_URL` and `WIKI_TOKEN` from the environment (or
 8. **Review changes as diffs.** To learn what an edit did — yours, another
    agent's, or a person's — use `wiki diff` rather than reading and
    comparing whole pages.
+9. **Read the actor, not just the id.** History, log, notes and records name
+   who acted: `type` (human or agent), `id`, `onBehalfOf` (the person an
+   agent worked for — treat the change as theirs), and, when the host says,
+   `via` (the surface it came through) and `org` (set only when the author
+   acted from an organization other than the wiki's — a wiki can be shared
+   across organizations). Name people rather than quoting ids when the host
+   offers a way to resolve them.
 
 ## The safe edit loop
 
