@@ -46,6 +46,22 @@ describe('getLog', () => {
     activity.authored.actor.should.deepEqual(assistant)
   })
 
+  it('carries the org an author acted from on commits and notes, and leaves it off when unsaid', async () => {
+    const { kit } = await createTestKit()
+    const { wikiId } = await seedAcme(kit)
+    const guest = { type: 'human', id: 'user_guest', onBehalfOf: null, org: 'org_guest', via: 'web' }
+    await kit.setNode({ wikiId, path: 'about.foo', content: 'from outside', actor: guest })
+    await kit.addNote({ wikiId, path: 'about.foo', body: 'hello from another org', actor: guest })
+
+    const [latest, before] = await kit.getLog({ wikiId, limit: 2 })
+    latest.actor.should.deepEqual(guest)
+    before.actor.should.not.have.property('org')
+    const [note] = await kit.listNotes({ wikiId, path: 'about.foo' })
+    note.author.should.deepEqual({ type: 'human', id: 'user_guest', onBehalfOf: null, org: 'org_guest' })
+    const activity = await kit.getWikiActivity({ wikiId })
+    activity.authored.actor.org.should.equal('org_guest')
+  })
+
   it('reads a node written again after deletion as created', async () => {
     const { kit } = await createTestKit()
     const { wikiId } = await seedAcme(kit)

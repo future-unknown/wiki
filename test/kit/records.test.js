@@ -27,6 +27,16 @@ describe('records', () => {
   }
 
   describe('unkeyed pages (append)', () => {
+    it('stamps the org a writer acted from, on the record and the page summary', async () => {
+      const { kit } = await createRecordsKit()
+      const { wikiId } = await seedAcme(kit)
+      const guest = { type: 'human', id: 'user_guest', onBehalfOf: null, org: 'org_guest', via: 'web' }
+      const record = await kit.putRecord({ wikiId, path: 'about.foo', value: { n: 1 }, actor: guest })
+      record._actor.should.deepEqual({ type: 'human', id: 'user_guest', onBehalfOf: null, org: 'org_guest' })
+      const activity = await kit.getWikiActivity({ wikiId })
+      activity.recorded.actor.org.should.equal('org_guest')
+    })
+
     it('appends a record without creating a commit or revision', async () => {
       const { kit, db } = await createRecordsKit()
       const { wikiId } = await seedAcme(kit)
