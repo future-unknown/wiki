@@ -550,6 +550,204 @@ describe('records', () => {
     })
   })
 
+  describe('record history', () => {
+    async function createHistoryKit () {
+      const records = openRecordStore({ endpoint: dynoxide.endpoint, table: uniqueTable() })
+      const { kit, db } = await createTestKit({ records })
+      const { wikiId } = await seedAcme(kit)
+      await kit.setNode({ wikiId, path: 'tasks', content: '', metadata: { key: 'id' }, actor: human })
+      return { kit, db, records, wikiId }
+    }
+
+    const put = (kit, wikiId, value, options = {}) =>
+      kit.putRecord({ wikiId, path: 'tasks', value, actor: agent, ...options })
+
+    it('keeps every version of a keyed record, newest first, beside the record', async () => {
+      const { kit, wikiId } = await createHistoryKit()
+      await put(kit, wikiId, { id: 't-1', status: 'todo' })
+      await put(kit, wikiId, { id: 't-1', status: 'doing' }, { actor: human })
+      await put(kit, wikiId, { id: 't-1', status: 'done' })
+
+      const { versions, cursor } = await kit.getRecordHistory({ wikiId, path: 'tasks', key: 't-1' })
+      should(cursor).be.undefined()
+      versions.map((version) => [version._v, version._change, version.status]).should.deepEqual([
+        [3, 'updated', 'done'],
+        [2, 'updated', 'doing'],
+        [1, 'created', 'todo']
+      ])
+      versions[0]._id.should.equal('t-1')
+      versions[1]._actor.should.deepEqual({ type: 'human', id: 'user_test', onBehalfOf: null })
+      versions[0]._ts.should.be.a.String()
+
+      // The page reads its records as before: one record, no versions.
+      const { records } = await kit.getRecords({ wikiId, path: 'tasks' })
+      records.length.should.equal(1)
+      records[0].should.not.have.property('_change')
+      const tree = await kit.getTree({ wikiId, path: 'tasks' })
+      tree.records.count.should.equal(1)
+    })
+
+    it('reads a version with the one before it, the pair a diff reads', async () => {
+      const { kit, wikiId } = await createHistoryKit()
+      await put(kit, wikiId, { id: 't-1', status: 'todo' })
+      await put(kit, wikiId, { id: 't-1', status: 'done' })
+
+      const second = await kit.getRecordVersion({ wikiId, path: 'tasks', key: 't-1', version: 2 })
+      second.version.status.should.equal('done')
+      second.previous.status.should.equal('todo')
+      second.previous._v.should.equal(1)
+
+      const first = await kit.getRecordVersion({ wikiId, path: 'tasks', key: 't-1', version: 1 })
+      should(first.previous).be.null()
+
+      await kit.getRecordVersion({ wikiId, path: 'tasks', key: 't-1', version: 3 })
+        .should.be.rejectedWith(NotFoundError)
+      await kit.getRecordVersion({ wikiId, path: 'tasks', key: 't-1', version: 0 })
+        .should.be.rejectedWith(ValidationError)
+    })
+
+    it('restores a version by writing it back — a new version, not a rewind', async () => {
+      const { kit, wikiId } = await createHistoryKit()
+      await put(kit, wikiId, { id: 't-1', status: 'todo', owner: 'a' })
+      await put(kit, wikiId, { id: 't-1', status: 'done' })
+
+      const { version } = await kit.getRecordVersion({ wikiId, path: 'tasks', key: 't-1', version: 1 })
+      const { _id, _v, _ts, _actor, _change, ...value } = version
+      const restored = await put(kit, wikiId, value, { ifVersion: 2 })
+      restored._v.should.equal(3)
+      restored.owner.should.equal('a')
+
+      const { versions } = await kit.getRecordHistory({ wikiId, path: 'tasks', key: 't-1' })
+      versions.map((entry) => entry.status).should.deepEqual(['todo', 'done', 'todo'])
+    })
+
+    it('keeps a deletion as a version; a record written again continues its history', async () => {
+      const { kit, wikiId } = await createHistoryKit()
+      await put(kit, wikiId, { id: 't-1', status: 'todo' })
+      await put(kit, wikiId, { id: 't-1', status: 'done' })
+      await kit.deleteRecord({ wikiId, path: 'tasks', key: 't-1', actor: human })
+
+      const gone = await kit.getRecordHistory({ wikiId, path: 'tasks', key: 't-1' })
+      gone.versions[0].should.have.properties({ _v: 3, _change: 'deleted' })
+      gone.versions[0].should.not.have.property('status')
+      gone.versions[0]._actor.id.should.equal('user_test')
+
+      const again = await put(kit, wikiId, { id: 't-1', status: 'reopened' })
+      again._v.should.equal(4)
+      const { versions } = await kit.getRecordHistory({ wikiId, path: 'tasks', key: 't-1' })
+      versions.map((version) => version._change).should.deepEqual(['created', 'deleted', 'updated', 'created'])
+    })
+
+    it('keeps nothing from a write that loses its compare-and-swap', async () => {
+      const { kit, wikiId } = await createHistoryKit()
+      await put(kit, wikiId, { id: 't-1', status: 'todo' })
+      await put(kit, wikiId, { id: 't-1', status: 'claimed', by: 'a' }, { ifVersion: 1 })
+      await put(kit, wikiId, { id: 't-1', status: 'claimed', by: 'b' }, { ifVersion: 1 })
+        .should.be.rejectedWith(RevisionConflictError)
+
+      const { versions } = await kit.getRecordHistory({ wikiId, path: 'tasks', key: 't-1' })
+      versions.map((version) => version.by ?? null).should.deepEqual(['a', null])
+    })
+
+    it('keeps one version per write when writers race', async () => {
+      const { kit, wikiId } = await createHistoryKit()
+      await put(kit, wikiId, { id: 't-1', n: 0 })
+      const results = await Promise.allSettled(
+        Array.from({ length: 6 }, (_, n) => put(kit, wikiId, { id: 't-1', n: n + 1 }))
+      )
+      const written = results.filter((result) => result.status === 'fulfilled').map((result) => result.value)
+      const { versions } = await kit.getRecordHistory({ wikiId, path: 'tasks', key: 't-1' })
+      // Every write that succeeded is exactly one version, and the
+      // versions are dense.
+      versions.length.should.equal(written.length + 1)
+      versions.map((version) => version._v).should.deepEqual(
+        Array.from({ length: versions.length }, (_, index) => versions.length - index)
+      )
+      const { record } = await kit.getRecords({ wikiId, path: 'tasks', key: 't-1' })
+      record.n.should.equal(versions[0].n)
+    })
+
+    it('never mixes the histories of keys that share a prefix', async () => {
+      const { kit, wikiId } = await createHistoryKit()
+      await put(kit, wikiId, { id: 'a', n: 1 })
+      await put(kit, wikiId, { id: 'a#5', n: 2 })
+      await put(kit, wikiId, { id: 'a#0000000001', n: 3 })
+      await put(kit, wikiId, { id: 'a b/ü', n: 4 })
+
+      for (const [key, n] of [['a', 1], ['a#5', 2], ['a#0000000001', 3], ['a b/ü', 4]]) {
+        const { versions } = await kit.getRecordHistory({ wikiId, path: 'tasks', key })
+        versions.map((version) => [version._id, version.n]).should.deepEqual([[key, n]])
+      }
+    })
+
+    it('pages a long history with limit and cursor', async () => {
+      const { kit, wikiId } = await createHistoryKit()
+      for (let n = 1; n <= 5; n += 1) await put(kit, wikiId, { id: 't-1', n })
+
+      const first = await kit.getRecordHistory({ wikiId, path: 'tasks', key: 't-1', limit: 2 })
+      first.versions.map((version) => version._v).should.deepEqual([5, 4])
+      const second = await kit.getRecordHistory({ wikiId, path: 'tasks', key: 't-1', limit: 2, cursor: first.cursor })
+      second.versions.map((version) => version._v).should.deepEqual([3, 2])
+      const third = await kit.getRecordHistory({ wikiId, path: 'tasks', key: 't-1', limit: 2, cursor: second.cursor })
+      third.versions.map((version) => version._v).should.deepEqual([1])
+      should(third.cursor).be.undefined()
+
+      await kit.getRecordHistory({ wikiId, path: 'tasks', key: 't-1', limit: 0 })
+        .should.be.rejectedWith(ValidationError)
+      await kit.getRecordHistory({ wikiId, path: 'tasks', key: '' })
+        .should.be.rejectedWith(ValidationError)
+    })
+
+    it('keeps no versions on a log — a logged record is its own history', async () => {
+      const { kit, wikiId } = await createHistoryKit()
+      const record = await kit.putRecord({ wikiId, path: 'about.foo', value: { n: 1 }, actor: agent })
+      await kit.getRecordHistory({ wikiId, path: 'about.foo', key: record._id })
+        .should.be.rejectedWith(NotFoundError)
+      await kit.deleteRecord({ wikiId, path: 'about.foo', key: record._id, actor: human })
+      await kit.getRecordHistory({ wikiId, path: 'about.foo', key: record._id })
+        .should.be.rejectedWith(NotFoundError)
+    })
+
+    it('starts history for records that predate it, on migrate, once', async () => {
+      const { kit, db, records, wikiId } = await createHistoryKit()
+      await put(kit, wikiId, { id: 't-1', status: 'todo' })
+      await put(kit, wikiId, { id: 't-1', status: 'done' })
+      await put(kit, wikiId, { id: 't-2', status: 'todo' })
+      await kit.putRecord({ wikiId, path: 'about.foo', value: { n: 1 }, actor: agent })
+
+      // An upgrade finds records with no kept versions.
+      const { items } = await records.query({ pk: wikiId, from: 'h#', to: 'h#￿', limit: 100 })
+      for (const item of items) await records.delete(item.pk, item.sk)
+      db.prepare('UPDATE node_records SET versions_kept = 0').run()
+
+      await kit.migrate()
+      await kit.migrate() // once: a marked page is not read again
+      const t1 = await kit.getRecordHistory({ wikiId, path: 'tasks', key: 't-1' })
+      t1.versions.map((version) => [version._v, version._change, version.status]).should.deepEqual([[2, 'updated', 'done']])
+      const t2 = await kit.getRecordHistory({ wikiId, path: 'tasks', key: 't-2' })
+      t2.versions.map((version) => [version._v, version._change]).should.deepEqual([[1, 'created']])
+      db.prepare('SELECT MIN(versions_kept) AS kept FROM node_records').get().kept.should.equal(1)
+
+      // History continues from there.
+      await put(kit, wikiId, { id: 't-1', status: 'reopened' })
+      const next = await kit.getRecordVersion({ wikiId, path: 'tasks', key: 't-1', version: 3 })
+      next.previous.status.should.equal('done')
+    })
+
+    it('never counts kept versions as records when the summary is rebuilt', async () => {
+      const { kit, db, wikiId } = await createHistoryKit()
+      await put(kit, wikiId, { id: 't-1', status: 'todo' })
+      await put(kit, wikiId, { id: 't-1', status: 'done' })
+      await put(kit, wikiId, { id: 't-2', status: 'todo' })
+      await kit.deleteRecord({ wikiId, path: 'tasks', key: 't-2', actor: human })
+
+      db.prepare('DELETE FROM node_records').run()
+      await kit.migrate()
+      const tree = await kit.getTree({ wikiId, path: 'tasks' })
+      tree.records.count.should.equal(1)
+    })
+  })
+
   describe('records and the authored plane', () => {
     it('never lets a put conflict with a conditional content edit', async () => {
       const { kit } = await createRecordsKit()
