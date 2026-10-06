@@ -748,6 +748,138 @@ describe('records', () => {
     })
   })
 
+  describe('records as of a moment', () => {
+    const pause = () => new Promise((resolve) => setTimeout(resolve, 5))
+    // A moment strictly between the writes before it and after it.
+    const moment = async () => {
+      await pause()
+      const at = new Date().toISOString()
+      await pause()
+      return at
+    }
+
+    async function createAsOfKit () {
+      const records = openRecordStore({ endpoint: dynoxide.endpoint, table: uniqueTable() })
+      const { kit, db } = await createTestKit({ records })
+      const { wikiId } = await seedAcme(kit)
+      await kit.setNode({ wikiId, path: 'tasks', content: '', metadata: { key: 'id' }, actor: human })
+      return { kit, db, records, wikiId }
+    }
+
+    const put = (kit, wikiId, value) => kit.putRecord({ wikiId, path: 'tasks', value, actor: agent })
+    const statuses = (records) => records.map((record) => [record._id, record.status])
+
+    it('reads a keyed page as it stood at any moment, deletions included', async () => {
+      const { kit, wikiId } = await createAsOfKit()
+      const before = await moment()
+      await put(kit, wikiId, { id: 't-1', status: 'todo' })
+      await put(kit, wikiId, { id: 't-2', status: 'todo' })
+      const first = await moment()
+      await put(kit, wikiId, { id: 't-1', status: 'done' })
+      await kit.deleteRecord({ wikiId, path: 'tasks', key: 't-2', actor: human })
+      await put(kit, wikiId, { id: 't-3', status: 'todo' })
+      const second = await moment()
+      await put(kit, wikiId, { id: 't-2', status: 'reopened' })
+
+      const empty = await kit.getRecords({ wikiId, path: 'tasks', at: before })
+      empty.should.deepEqual({ at: before, records: [], unknown: [] })
+
+      const then = await kit.getRecords({ wikiId, path: 'tasks', at: first })
+      statuses(then.records).should.deepEqual([['t-1', 'todo'], ['t-2', 'todo']])
+      then.unknown.should.deepEqual([])
+      then.records[0]._v.should.equal(1)
+      then.records[0].should.not.have.property('_change')
+
+      const later = await kit.getRecords({ wikiId, path: 'tasks', at: second })
+      statuses(later.records).should.deepEqual([['t-1', 'done'], ['t-3', 'todo']])
+
+      // Now reads the same as the page itself.
+      const now = await kit.getRecords({ wikiId, path: 'tasks', at: new Date().toISOString() })
+      const { records } = await kit.getRecords({ wikiId, path: 'tasks' })
+      statuses(now.records).should.deepEqual(statuses(records))
+      now.records.map((record) => record._v).should.deepEqual(records.map((record) => record._v))
+    })
+
+    it('names the keys whose state at that moment was not kept', async () => {
+      const { kit, db, records, wikiId } = await createAsOfKit()
+      await put(kit, wikiId, { id: 't-1', status: 'todo' })
+      const early = await moment()
+      await put(kit, wikiId, { id: 't-1', status: 'doing' })
+      await put(kit, wikiId, { id: 't-1', status: 'done' })
+      const late = await moment()
+
+      // An upgrade keeps only each record's current value.
+      const { items } = await records.query({ pk: wikiId, from: 'h#', to: 'h#￿', limit: 100 })
+      for (const item of items) await records.delete(item.pk, item.sk)
+      db.prepare('UPDATE node_records SET versions_kept = 0').run()
+      await kit.migrate()
+
+      const unkept = await kit.getRecords({ wikiId, path: 'tasks', at: early })
+      unkept.records.should.deepEqual([])
+      unkept.unknown.should.deepEqual(['t-1'])
+
+      // The kept version stands from its own write on.
+      const kept = await kit.getRecords({ wikiId, path: 'tasks', at: late })
+      statuses(kept.records).should.deepEqual([['t-1', 'done']])
+      kept.unknown.should.deepEqual([])
+    })
+
+    it('stamps when the wiki got a logged record, apart from when it happened', async () => {
+      const { kit, wikiId } = await createAsOfKit()
+      const record = await kit.putRecord({
+        wikiId, path: 'about.foo', value: { n: 1 }, ts: '2026-01-01T00:00:00Z', actor: agent
+      })
+      record._ts.should.equal('2026-01-01T00:00:00.000Z')
+      record._written.should.be.a.String()
+      ;(record._written > record._ts).should.be.true()
+
+      const keyed = await put(kit, wikiId, { id: 't-1' })
+      keyed.should.not.have.property('_written')
+    })
+
+    it('reads a log as it stood: what was written by then, not only observed', async () => {
+      const { kit, records, wikiId } = await createAsOfKit()
+      const log = (value, ts) => kit.putRecord({ wikiId, path: 'about.foo', value, ts, actor: agent })
+      await log({ n: 1 })
+      const first = await moment()
+      await log({ n: 2 })
+      // Backfilled to before the first moment, but written after it.
+      await log({ n: 0 }, '2026-01-01T00:00:00Z')
+      // Written before write stamps: counts as written when observed.
+      await log({ n: -1 }, '2026-01-02T00:00:00Z')
+      const { items } = await records.query({ pk: wikiId, from: '', to: 'h#', limit: 100 })
+      const { _written, ...unstamped } = items.find((item) => item.n === -1)
+      await records.put({ item: unstamped })
+      const second = await moment()
+
+      const then = await kit.getRecords({ wikiId, path: 'about.foo', at: first })
+      then.records.map((record) => record.n).should.deepEqual([-1, 1])
+      const later = await kit.getRecords({ wikiId, path: 'about.foo', at: second })
+      later.records.map((record) => record.n).should.deepEqual([0, -1, 1, 2])
+
+      // Pages like any read; a page may come back short of its limit.
+      const head = await kit.getRecords({ wikiId, path: 'about.foo', at: first, limit: 1 })
+      head.records.should.deepEqual([])
+      const rest = await kit.getRecords({ wikiId, path: 'about.foo', at: first, limit: 1, cursor: head.cursor })
+      rest.records.map((record) => record.n).should.deepEqual([-1])
+      const newest = await kit.getRecords({ wikiId, path: 'about.foo', at: second, reverse: true, limit: 2 })
+      newest.records.map((record) => record.n).should.deepEqual([2, 1])
+    })
+
+    it('validates the moment and what it combines with', async () => {
+      const { kit, wikiId } = await createAsOfKit()
+      const at = new Date().toISOString()
+      await kit.getRecords({ wikiId, path: 'tasks', at: 'yesterday' })
+        .should.be.rejectedWith(ValidationError)
+      await kit.getRecords({ wikiId, path: 'tasks', at, key: 't-1' })
+        .should.be.rejectedWith(ValidationError)
+      await kit.getRecords({ wikiId, path: 'tasks', at, limit: 5 })
+        .should.be.rejectedWith(ValidationError)
+      await kit.getRecords({ wikiId, path: 'about.foo', at, since: at })
+        .should.be.rejectedWith(ValidationError)
+    })
+  })
+
   describe('records and the authored plane', () => {
     it('never lets a put conflict with a conditional content edit', async () => {
       const { kit } = await createRecordsKit()
