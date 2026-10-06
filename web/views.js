@@ -14,12 +14,6 @@ function isPlainObject (value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-function cellText (value) {
-  if (value === undefined) return ''
-  if (typeof value === 'string') return value
-  return JSON.stringify(value)
-}
-
 /**
  * Pretty-printed JSON in a code block; raw content with a notice when
  * it does not parse.
@@ -38,37 +32,6 @@ export function renderJson (content) {
 }
 
 /**
- * A JSON array of objects as a table (columns in first-appearance
- * order); anything else falls back to the JSON rendering with a notice.
- *
- * @param {string} content
- */
-export function renderTable (content) {
-  let value
-  try {
-    value = JSON.parse(content)
-  } catch {
-    return renderJson(content)
-  }
-  if (!Array.isArray(value) || value.length === 0 || !value.every(isPlainObject)) {
-    return '<p class="hint">table pages hold a JSON array of objects — showing JSON</p>' +
-      renderJson(content)
-  }
-  const columns = []
-  for (const row of value) {
-    for (const key of Object.keys(row)) {
-      if (!columns.includes(key)) columns.push(key)
-    }
-  }
-  const head = columns.map((column) => `<th>${escapeHtml(column)}</th>`).join('')
-  const body = value
-    .map((row) =>
-      `<tr>${columns.map((column) => `<td>${escapeHtml(cellText(row[column]))}</td>`).join('')}</tr>`)
-    .join('')
-  return `<table class="data-table"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
-}
-
-/**
  * Dispatch on the page's declared type.
  *
  * @param {{ content: string, metadata?: { type?: string } }} node
@@ -76,7 +39,6 @@ export function renderTable (content) {
 export function renderContent (node) {
   const type = node.metadata?.type
   if (type === 'json') return renderJson(node.content)
-  if (type === 'table') return renderTable(node.content)
   return renderMarkdown(node.content)
 }
 

@@ -232,7 +232,9 @@ async function runSearch (query) {
     link.textContent = result.title || result.fullPath
     const excerpt = document.createElement('span')
     excerpt.className = 'excerpt'
-    excerpt.textContent = `${result.fullPath} — ${result.excerpt}`
+    // A record hit is addressed by its page and key; it opens its page.
+    const address = result.key ? `${result.fullPath}/${result.key}` : result.fullPath
+    excerpt.textContent = `${address} — ${result.excerpt}`
     item.appendChild(link)
     item.appendChild(excerpt)
     list.appendChild(item)

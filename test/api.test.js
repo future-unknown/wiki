@@ -356,6 +356,57 @@ describe('wiki-api', () => {
       conflict.error.data.code.should.equal('REVISION_CONFLICT')
     })
 
+    it('reads a table record’s versions, one version with the one before, and the table at a moment', async () => {
+      const { rpc } = await createTestApi()
+      await rpc('wiki.set', { path: 'acme.tasks', content: 'Tasks.', metadata: { key: 'id' } })
+      await rpc('wiki.put', { path: 'acme.tasks', value: { id: 't-1', status: 'todo' } }, 'agent-token')
+      const between = new Date().toISOString()
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      await rpc('wiki.put', { path: 'acme.tasks', value: { id: 't-1', status: 'done' } }, 'agent-token')
+
+      const versions = await rpc('wiki.versions', { path: 'acme.tasks', key: 't-1' }, 'read-token')
+      versions.result.fullPath.should.equal('acme.tasks')
+      versions.result.key.should.equal('t-1')
+      versions.result.versions.map((version) => [version._v, version._change, version.status])
+        .should.deepEqual([[2, 'updated', 'done'], [1, 'created', 'todo']])
+
+      const version = await rpc('wiki.version', { path: 'acme.tasks', key: 't-1', version: 2 }, 'read-token')
+      version.result.version.status.should.equal('done')
+      version.result.previous.status.should.equal('todo')
+
+      const then = await rpc('wiki.data', { path: 'acme.tasks', at: between }, 'read-token')
+      then.result.records.map((record) => record.status).should.deepEqual(['todo'])
+      then.result.unknown.should.deepEqual([])
+
+      const missing = await rpc('wiki.versions', { path: 'acme.tasks', key: 'nope' })
+      missing.error.data.code.should.equal('NOT_FOUND')
+      const unversioned = await rpc('wiki.version', { path: 'acme.tasks', key: 't-1' })
+      unversioned.error.data.details.param.should.equal('version')
+    })
+
+    it('says what links to a page or a record, and finds records by search', async () => {
+      const { rpc } = await createTestApi()
+      await rpc('wiki.set', { path: 'acme.people', content: 'People.', metadata: { key: 'id' } })
+      await rpc('wiki.set', { path: 'acme.deals', content: 'Deals.', metadata: { key: 'id' } })
+      await rpc('wiki.set', { path: 'acme.about', content: 'Ask [[people/jo|Jo]] about [[deals]].' })
+      await rpc('wiki.put', { path: 'acme.people', value: { id: 'jo', name: 'Jo Smith', content: 'Champion at Globex.' } })
+      await rpc('wiki.put', { path: 'acme.deals', value: { id: 'd-1', person: '[[people/jo]]' } })
+
+      const links = await rpc('wiki.links', { path: 'acme.people', key: 'jo' }, 'read-token')
+      links.result.key.should.equal('jo')
+      links.result.links.map((link) => [link.fullPath, link.key]).should.deepEqual([
+        ['acme.about', null],
+        ['acme.deals', 'd-1']
+      ])
+      links.result.links[1].record.person.should.equal('[[people/jo]]')
+      const toPage = await rpc('wiki.links', { path: 'acme.deals' }, 'read-token')
+      toPage.result.links.map((link) => link.fullPath).should.deepEqual(['acme.about'])
+
+      const hits = await rpc('wiki.search', { path: 'acme', query: 'Globex' }, 'read-token')
+      hits.result.map((hit) => [hit.kind, hit.fullPath, hit.key, hit.title])
+        .should.deepEqual([['record', 'acme.people', 'jo', 'Jo Smith']])
+    })
+
     it('enforces a declared schema on put', async () => {
       const { rpc } = await createTestApi()
       await rpc('wiki.set', { path: 'acme.survey', content: 'Survey.' })

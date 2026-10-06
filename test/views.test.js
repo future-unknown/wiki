@@ -1,5 +1,5 @@
 import should from 'should'
-import { renderJson, renderTable, renderContent, seriesFromRows } from '../web/views.js'
+import { renderJson, renderContent, seriesFromRows } from '../web/views.js'
 
 describe('renderJson', () => {
   it('pretty-prints valid JSON, escaped', () => {
@@ -16,45 +16,13 @@ describe('renderJson', () => {
   })
 })
 
-describe('renderTable', () => {
-  it('renders an array of objects with columns in first-appearance order', () => {
-    const html = renderTable(JSON.stringify([
-      { date: '2026-01-01', requests: 10 },
-      { date: '2026-01-02', errors: 1 }
-    ]))
-    html.should.containEql('<table class="data-table">')
-    html.indexOf('<th>date</th>').should.be.below(html.indexOf('<th>requests</th>'))
-    html.indexOf('<th>requests</th>').should.be.below(html.indexOf('<th>errors</th>'))
-    html.should.containEql('<td>2026-01-01</td>')
-    html.should.containEql('<td>10</td>')
-    html.should.containEql('<td></td>') // missing cells render empty
-  })
-
-  it('escapes cell content and stringifies nested values', () => {
-    const html = renderTable(JSON.stringify([{ note: '<script>', tags: ['a'] }]))
-    html.should.containEql('&lt;script&gt;')
-    html.should.not.containEql('<script>')
-    html.should.containEql('[&quot;a&quot;]')
-  })
-
-  it('falls back to JSON with a notice for non-tabular values', () => {
-    renderTable('{"not":"an array"}').should.containEql('array of objects')
-    renderTable('[]').should.containEql('array of objects')
-    renderTable('[1,2]').should.containEql('array of objects')
-  })
-
-  it('falls back to the raw-content notice when parsing fails', () => {
-    renderTable('nope').should.containEql('not valid JSON')
-  })
-})
-
 describe('renderContent', () => {
   it('dispatches on metadata.type', () => {
     renderContent({ content: '# Hi', metadata: {} }).should.equal('<h1>Hi</h1>')
     renderContent({ content: '{"a":1}', metadata: { type: 'json' } })
       .should.containEql('<pre class="json">')
-    renderContent({ content: '[{"a":1}]', metadata: { type: 'table' } })
-      .should.containEql('<table class="data-table">')
+    // Rows are records now; a retired table type reads as markdown.
+    renderContent({ content: 'rows', metadata: { type: 'table' } }).should.equal('<p>rows</p>')
   })
 
   it('treats unknown types and missing metadata as markdown', () => {

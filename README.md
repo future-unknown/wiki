@@ -10,7 +10,7 @@ Everything is a node.
 Every node has a stable identity.
 Nodes form a tree.
 Paths address nodes.
-The wiki versions what is authored and stamps what is observed.
+A page versions by commit, a table record by its own versions, and a log is its own history.
 Every authored mutation creates an immutable node revision.
 Every atomic mutation belongs to a wiki-wide commit.
 A commit defines the complete authored state of the wiki at that point.
@@ -28,9 +28,10 @@ acme.about.foo
 
 Markdown is the canonical content format. A node can hold content and have
 children at the same time — there is no file-vs-directory distinction.
-A page may declare `metadata.type` (`markdown`, `json`, or `table`) to
-tell reading surfaces how to render its content; typed content is still
-plain text under the same versioning and concurrency rules.
+A page may declare `metadata.type` (`markdown` or `json`) to tell
+reading surfaces how to render its content; typed content is still
+plain text under the same versioning and concurrency rules. Rows are
+records, not content: see *tables* below.
 
 ## Architecture
 
@@ -187,16 +188,17 @@ settings panel to browse.
 wiki get <path>              # raw content on stdout; --json for everything
 wiki set <path> [content]    # inline arg, stdin/heredoc, or --file (one only)
 wiki tree <path>             # --depth, --commit, --at
-wiki search <path> <query>   # FTS over the subtree; --limit
-wiki history <path>          # revisions, newest first
-wiki diff <path>             # what a revision changed, as a unified diff; --commit, --revision
+wiki search <path> <query>   # FTS over the subtree's pages and table records; --limit
+wiki history <path>[/<key>]  # a page's revisions, or a table record's versions, newest first
+wiki diff <path>[/<key>]     # what a revision or a record version changed; --commit, --revision, --version
+wiki links <path>[/<key>]    # what links to a page or a record
 wiki log <path>              # the wiki's change log: commits and the pages they touched; --limit, --before
 wiki move <from> <to>        # subtree moves, identity preserved
 wiki rm <path>               # --recursive for subtrees, --if-commit for safety
 wiki meta <path> [json]      # merge metadata fields; null removes; --replace swaps
-wiki put <path> [json]       # write a record: keyed pages upsert, unkeyed append
-wiki del <path> <key>        # delete one record by key (or _id on unkeyed pages)
-wiki data <path> [key]       # read records; --latest, --reverse, --since/--until, --limit, --cursor
+wiki put <path> [json]       # write a record: a table upserts by key, a log appends
+wiki del <path> <key>        # delete one record by key (or _id on a log)
+wiki data <path> [key]       # read records; --latest, --reverse, --since/--until, --limit, --cursor, --at
 ```
 
 Pages take **notes** — append-only feedback attached to the page's
@@ -210,16 +212,22 @@ naming its page's current path.
 Pages also carry **records** — every page is a document you can read
 plus records you can query. A record is a JSON object written with
 `wiki put`, stamped with `_actor`, `_ts`, a version `_v`, and `_id`
-(its address within the page), outside the commit model: no revision,
+(its address within the page), outside the commit model: no commit,
 attached to the page's identity, so records survive moves and become
-unreachable with deletion. One declaration decides the behavior:
-`metadata.key` names a field and the page acts as a table or key/value
-store (`put` upserts by key, `--if-version` is compare-and-swap for
-racing writers); no key and the page acts as a log (`put` appends,
-`--ts` backfills, `metadata.retain` `{"days": n}` expires old
-records). Reads follow the sort order: on a keyed page `latest`,
-`since`, and `until` range over keys, not time. `metadata.schema`
-(JSON Schema) is enforced on every put.
+unreachable with deletion. One declaration decides the behavior: a
+page with `metadata.key` is a **table** (`put` upserts by key,
+`--if-version` is compare-and-swap for racing writers, and every
+version of every record is kept beside it — `wiki history` and
+`wiki diff` read them by the record's address, `<page>/<key>`;
+`metadata.retain` `{"versions": n}` caps them); a page without one is
+a **log** (`put` appends, `--ts` backfills `_ts`, `_written` stamps
+arrival, `metadata.retain` `{"days": n}` expires old records). Reads
+follow the sort order: on a table `latest`, `since`, and `until` range
+over keys, not time; `--at` reads the records as they stood at a
+moment. `metadata.schema` (JSON Schema) is enforced on every put. On a
+table, a record whose `content` is a string carries a Markdown
+document, headed by its `title`, else its `name`, else its key; table
+records are searchable beside pages.
 The declarations are authored intent, so they live in versioned
 metadata — merged field-wise with `wiki meta`; the records themselves
 do not. Record storage speaks the DynamoDB API behind the scenes: a
@@ -228,9 +236,12 @@ self-hosting, AWS DynamoDB at scale — same client, different endpoint
 (`WIKI_RECORDS_URL`).
 
 Pages link to each other with wikilinks — `[[docs.cli]]` or
-`[[docs.cli|the CLI guide]]` — wiki-relative dot-paths in plain text.
-The system never parses them; reading surfaces render them as
-navigation, and search finds referring pages by the target's path.
+`[[docs.cli|the CLI guide]]` — wiki-relative dot-paths in plain text,
+and to records by their address, `[[crm.contacts/jo]]`. Reading
+surfaces render them as navigation; the wiki indexes every link in
+page content and in record values, so `wiki links` answers what links
+to any page or record — a record field holding a link is a relation,
+read backwards.
 An embed — `![[usage.daily]]` on a line of its own — composes pages:
 reading surfaces render the target page inline (content, data, and
 nested embeds, depth-capped and cycle-safe), which makes a dashboard

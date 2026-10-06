@@ -321,6 +321,59 @@ describe('wiki CLI (end to end)', () => {
     })
   })
 
+  describe('record history, links, and record search', () => {
+    it('lists a record’s versions and diffs one, by its address', async () => {
+      ;(await wiki(['set', 'acme.crm', 'CRM'])).code.should.equal(0)
+      ;(await wiki(['set', 'acme.crm.people', 'People', '--metadata', '{"key":"id"}'])).code.should.equal(0)
+      ;(await wiki(['put', 'acme.crm.people', '{"id":"jo","name":"Jo Smith","stage":"met"}'])).code.should.equal(0)
+      ;(await wiki(['put', 'acme.crm.people', '{"id":"jo","name":"Jo Smith","stage":"proposal"}'])).code.should.equal(0)
+
+      const history = await wiki(['history', 'acme.crm.people/jo'])
+      history.code.should.equal(0, history.stderr)
+      history.stdout.split('\n').filter(Boolean).map((line) => line.split('  ')[0])
+        .should.deepEqual(['version 2', 'version 1'])
+      history.stdout.should.containEql('updated')
+
+      const diff = await wiki(['diff', 'acme.crm.people/jo'])
+      diff.code.should.equal(0, diff.stderr)
+      diff.stdout.should.containEql('-  "stage": "met"')
+      diff.stdout.should.containEql('+  "stage": "proposal"')
+      diff.stdout.should.containEql('acme.crm.people/jo@v2')
+
+      const first = await wiki(['diff', 'acme.crm.people/jo', '--version', '1', '--json'])
+      should(JSON.parse(first.stdout).previous).be.null()
+
+      const wrong = await wiki(['diff', 'acme.crm.people/jo', '--commit', '1'])
+      wrong.code.should.equal(2)
+      const pageVersion = await wiki(['diff', 'acme.crm.people', '--version', '1'])
+      pageVersion.code.should.equal(2)
+    })
+
+    it('says what links to a record, and finds it by search', async () => {
+      ;(await wiki(['set', 'acme.crm.deals', 'Deals', '--metadata', '{"key":"id"}'])).code.should.equal(0)
+      ;(await wiki(['put', 'acme.crm.deals', '{"id":"d-1","person":"[[crm.people/jo]]"}'])).code.should.equal(0)
+      ;(await wiki(['set', 'acme.crm.notes', 'Our champion is [[crm.people/jo|Jo]].'])).code.should.equal(0)
+
+      const links = await wiki(['links', 'acme.crm.people/jo'])
+      links.code.should.equal(0, links.stderr)
+      links.stdout.should.containEql('acme.crm.deals/d-1')
+      links.stdout.should.containEql('acme.crm.notes')
+
+      const hits = await wiki(['search', 'acme', 'proposal'])
+      hits.code.should.equal(0)
+      hits.stdout.should.startWith('acme.crm.people/jo')
+    })
+
+    it('reads a table as it stood at a moment', async () => {
+      const at = new Date().toISOString()
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      ;(await wiki(['put', 'acme.crm.people', '{"id":"sam","name":"Sam"}'])).code.should.equal(0)
+      const then = await wiki(['data', 'acme.crm.people', '--at', at, '--json'])
+      then.code.should.equal(0, then.stderr)
+      JSON.parse(then.stdout).records.map((record) => record.id).should.deepEqual(['jo'])
+    })
+  })
+
   describe('exit codes and errors', () => {
     it('exits 3 for missing nodes', async () => {
       (await wiki(['get', 'acme.nope'])).code.should.equal(3)
