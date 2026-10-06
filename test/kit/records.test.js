@@ -719,6 +719,7 @@ describe('records', () => {
       const { items } = await records.query({ pk: wikiId, from: 'h#', to: 'h#￿', limit: 100 })
       for (const item of items) await records.delete(item.pk, item.sk)
       db.prepare('UPDATE node_records SET versions_kept = 0').run()
+      db.prepare("INSERT INTO pending_backfills (id) VALUES ('record-versions')").run()
 
       await kit.migrate()
       await kit.migrate() // once: a marked page is not read again
@@ -732,6 +733,27 @@ describe('records', () => {
       await put(kit, wikiId, { id: 't-1', status: 'reopened' })
       const next = await kit.getRecordVersion({ wikiId, path: 'tasks', key: 't-1', version: 3 })
       next.previous.status.should.equal('done')
+    })
+
+    it('keeps the rest of a batch when one of its versions was kept already', async () => {
+      const { kit, db, records, wikiId } = await createHistoryKit()
+      await put(kit, wikiId, { id: 't-1', status: 'todo' })
+      await put(kit, wikiId, { id: 't-2', status: 'todo' })
+      await put(kit, wikiId, { id: 't-2', status: 'done' })
+
+      // t-2's current version is kept; t-1's is not.
+      const { items } = await records.query({ pk: wikiId, from: 'h#', to: 'h#\uffff', limit: 100 })
+      for (const item of items) {
+        if (!(item._v === 2 && item.status === 'done')) await records.delete(item.pk, item.sk)
+      }
+      db.prepare('UPDATE node_records SET versions_kept = 0').run()
+      db.prepare("INSERT INTO pending_backfills (id) VALUES ('record-versions')").run()
+      await kit.migrate()
+
+      const t1 = await kit.getRecordHistory({ wikiId, path: 'tasks', key: 't-1' })
+      t1.versions.map((version) => version._v).should.deepEqual([1])
+      const t2 = await kit.getRecordHistory({ wikiId, path: 'tasks', key: 't-2' })
+      t2.versions.map((version) => [version._v, version.status]).should.deepEqual([[2, 'done']])
     })
 
     it('never counts kept versions as records when the summary is rebuilt', async () => {
@@ -812,6 +834,7 @@ describe('records', () => {
       const { items } = await records.query({ pk: wikiId, from: 'h#', to: 'h#￿', limit: 100 })
       for (const item of items) await records.delete(item.pk, item.sk)
       db.prepare('UPDATE node_records SET versions_kept = 0').run()
+      db.prepare("INSERT INTO pending_backfills (id) VALUES ('record-versions')").run()
       await kit.migrate()
 
       const unkept = await kit.getRecords({ wikiId, path: 'tasks', at: early })

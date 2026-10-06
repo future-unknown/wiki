@@ -225,9 +225,49 @@ describe('links, record search, and version retention', () => {
       db.prepare('SELECT COUNT(*) AS n FROM links').get().n.should.equal(0)
     })
 
-    it('leaves record indexing pending while there is no record store', async () => {
+    it('leaves the record backfills pending while there is no record store', async () => {
       const { db } = await createTestKit()
-      db.prepare('SELECT id FROM pending_backfills').all().map((row) => row.id).should.deepEqual(['record-index'])
+      db.prepare('SELECT id FROM pending_backfills ORDER BY id').all().map((row) => row.id)
+        .should.deepEqual(['record-index', 'record-versions'])
+    })
+
+    it('lets a host migrate first and backfill once it serves, one process at a time', async () => {
+      const { kit, db, wikiId } = await createLinkKit()
+      await contact(kit, wikiId, { id: 'jo', name: 'Jo Smith', content: 'champion' })
+      db.exec('DELETE FROM links; DELETE FROM records_fts; DELETE FROM record_search;')
+      db.exec("INSERT INTO pending_backfills (id) VALUES ('record-index')")
+
+      await kit.migrate({ backfill: false })
+      ;(await kit.search({ wikiId, query: 'champion' })).should.deepEqual([])
+
+      // Another process holds the claim: this one leaves the work to it.
+      db.prepare('UPDATE pending_backfills SET claimed_at = ?').run(Date.now())
+      await kit.backfill()
+      ;(await kit.search({ wikiId, query: 'champion' })).should.deepEqual([])
+
+      // A claim not renewed in time lapses, and the work is picked up.
+      db.prepare('UPDATE pending_backfills SET claimed_at = ?').run(Date.now() - 60 * 60 * 1000)
+      await kit.backfill()
+      ;(await kit.search({ wikiId, query: 'champion' })).map((hit) => hit.key).should.deepEqual(['jo'])
+      db.prepare('SELECT COUNT(*) AS n FROM pending_backfills').get().n.should.equal(0)
+    })
+
+    it('never indexes over a record a write indexed while the backfill ran', async () => {
+      const { kit, db, records, wikiId } = await createLinkKit()
+      await contact(kit, wikiId, { id: 'jo', note: 'old words' })
+      db.exec('DELETE FROM records_fts; DELETE FROM record_search;')
+      db.exec("INSERT INTO pending_backfills (id) VALUES ('record-index')")
+      // The backfill reads the old value; a write lands before it indexes.
+      const query = records.query
+      records.query = async (options) => {
+        const page = await query(options)
+        records.query = query
+        await contact(kit, wikiId, { id: 'jo', note: 'new words' })
+        return page
+      }
+      await kit.backfill()
+      ;(await kit.search({ wikiId, query: 'new' })).map((hit) => hit.key).should.deepEqual(['jo'])
+      ;(await kit.search({ wikiId, query: 'old' })).should.deepEqual([])
     })
   })
 })
