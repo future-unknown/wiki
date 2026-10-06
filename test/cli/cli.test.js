@@ -336,9 +336,11 @@ describe('wiki CLI (end to end)', () => {
 
       const diff = await wiki(['diff', 'acme.crm.people/jo'])
       diff.code.should.equal(0, diff.stderr)
-      diff.stdout.should.containEql('-  "stage": "met"')
-      diff.stdout.should.containEql('+  "stage": "proposal"')
-      diff.stdout.should.containEql('acme.crm.people/jo@v2')
+      diff.stdout.should.containEql('stage: "met" -> "proposal"')
+      ;(await wiki(['put', 'acme.crm.people', '{"id":"jo","name":"Jo Smith","stage":"proposal","content":"Met at the summit.\\n"}'])).code.should.equal(0)
+      const writing = await wiki(['diff', 'acme.crm.people/jo'])
+      writing.stdout.should.containEql('+Met at the summit.')
+      writing.stdout.should.containEql('acme.crm.people/jo@v3')
 
       const first = await wiki(['diff', 'acme.crm.people/jo', '--version', '1', '--json'])
       should(JSON.parse(first.stdout).previous).be.null()

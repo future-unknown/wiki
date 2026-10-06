@@ -197,11 +197,12 @@ wiki diff acme.about.foo --revision 3f2a... --json
 ```
 
 Given a record's address it shows what one version of that record
-changed: a version line, then a unified diff of the record's fields
-against the version before it (fields in sorted order, stamps left
-out). With no option it reads the latest version; `--version <n>`
-names one from `wiki history`. `--json` returns the version and the
-one before it under `previous`.
+changed, read the way a page revision is: a version line, then each
+other field that changed as `before -> after`, then a unified diff of
+the record's writing (its `content`) against the version before it.
+With no option it reads the latest version; `--version <n>` names one
+from `wiki history`. `--json` returns the version and the one before
+it under `previous`.
 
 ```bash
 wiki diff acme.crm.contacts/jo
