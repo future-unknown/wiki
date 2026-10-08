@@ -177,7 +177,7 @@ describe('wiki/store', () => {
     store.getState().page.content.should.equal('Tasks, thrice.')
   })
 
-  it('discover fetches the wiki document from the host, and says when there is none', async () => {
+  it('discover fetches the wiki document from the host, and says when it takes a sign-in', async () => {
     const fetch = async (url, options) => {
       url.should.equal('https://rpc.example.test/rpc/acme_labs')
       options.headers.accept.should.equal('application/json')
@@ -185,11 +185,11 @@ describe('wiki/store', () => {
     }
     const document = await discover({ baseUrl: 'https://rpc.example.test/', wiki: 'acme_labs', fetch })
     document.wiki.slug.should.equal('acme_labs')
-    await discover({ baseUrl: 'https://rpc.example.test', wiki: 'acme_nope', fetch: async () => ({ ok: false, status: 404 }) })
-      .should.be.rejectedWith(/no public wiki named acme_nope/)
+    await discover({ baseUrl: 'https://rpc.example.test', wiki: 'acme_nope', fetch: async () => ({ ok: false, status: 401 }) })
+      .should.be.rejectedWith(/reading acme_nope takes a sign-in with Known/)
   })
 
-  it('discover sends a sign-in\'s token, given as a string or a function, for a wiki that is not public', async () => {
+  it('discover sends a sign-in\'s token, given as a string or a function', async () => {
     const seen = []
     const fetch = async (url, options) => {
       seen.push(options.headers.authorization)

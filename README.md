@@ -132,11 +132,10 @@ error, and owns the mechanics of a load: status transitions and
 stale-response protection. Nothing else — no cache, no TTL, no retry.
 
 ```js
-import { createClient } from 'methodry'
 import { createWikiStore, discover, declarationsOf } from 'wiki/store'
 
-const rpc = createClient('https://rpc.known.info', null, { authHeader: () => ({}) })
-const discovery = await discover({ baseUrl: 'https://rpc.known.info', wiki: 'acme_labs' })
+// rpc: a methodry client signed in with Known (see Consuming: signing in)
+const discovery = await discover({ baseUrl: 'https://rpc.known.info', wiki: 'acme_labs', token: session.getState().getToken })
 const store = createWikiStore({ rpc, wiki: 'acme_labs', discovery })
 
 await store.getState().loadTree()
@@ -145,8 +144,10 @@ await store.getState().loadData('examples.tasks', { reverse: true })
 store.subscribe((state) => render(state.page, state.data))
 
 declarationsOf(store.getState())            // { key, schema, … } from discovery, or null
-await store.getState().put('examples.tasks', { id: 't1', title: 'Ship it' })
 ```
+
+On Known's rpc host an app reads; `put` and `del` serve a client the
+host lets write.
 
 Given a discovery document, a method the host does not serve is refused
 in the store before any request goes out. Without one, every method is
