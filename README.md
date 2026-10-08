@@ -153,6 +153,48 @@ in the store before any request goes out. Without one, every method is
 tried. `zustand` is an optional peer dependency: install it beside the
 package in any consumer that imports `wiki/store`.
 
+## Consuming: signing in
+
+`wiki/session` signs a person in to a browser app with Known, as a
+zustand vanilla store beside `wiki/store`: OAuth 2.0's authorization
+code flow with PKCE, for an app registered in Known (Settings → Apps,
+or `known <org> apps create`) with the wikis it reads attached. The
+host document (`discoverHost`) names Known's sign-in page and the
+token endpoints.
+
+```js
+import { createClient } from 'methodry'
+import { createSessionStore, discoverHost, methodryAuth, scopeFor } from 'wiki/session'
+import { createWikiStore, discover } from 'wiki/store'
+
+const host = 'https://rpc.known.info'
+const { signIn } = await discoverHost({ baseUrl: host })
+const session = createSessionStore({
+  clientId: 'app_…',                       // as registered
+  redirectUri: 'https://deals.example/',   // exactly as registered
+  scope: scopeFor('acme_deals'),
+  signIn
+})
+
+const { returnTo } = await session.getState().start()   // swaps a returning code, or resumes
+if (session.getState().status === 'signed-out') await session.getState().signIn({ returnTo: location.hash })
+
+const rpc = createClient(host, null, methodryAuth(session))
+const discovery = await discover({ baseUrl: host, wiki: 'acme_deals', token: session.getState().getToken })
+const store = createWikiStore({ rpc, wiki: 'acme_deals', discovery })
+```
+
+The state is what a view renders — `status` (`idle`, `checking`,
+`signed-in`, `signed-out`, `redirecting`, `unreachable`), the `wikis`
+granted, and the last `error` — so `useStore(session, (s) => s.status)`
+or `session.subscribe` drive the UI. The access token is never in the
+state; `getToken()` answers it, refreshed a minute before it lapses.
+`methodryAuth` sends it on every call and asks for a fresh one after a
+401. The refresh token is kept in localStorage; each works once, so a
+refresh takes a Web Lock and reads the newest token inside it, and two
+tabs never present the same one. Signing out (`signOut()`) revokes the
+sign-in at Known, and every tab follows.
+
 ## Development
 
 Requires Node.js 22+ and pnpm.

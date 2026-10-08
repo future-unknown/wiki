@@ -189,6 +189,21 @@ describe('wiki/store', () => {
       .should.be.rejectedWith(/no public wiki named acme_nope/)
   })
 
+  it('discover sends a sign-in\'s token, given as a string or a function, for a wiki that is not public', async () => {
+    const seen = []
+    const fetch = async (url, options) => {
+      seen.push(options.headers.authorization)
+      return { ok: true, json: async () => ({ wiki: { slug: 'acme_deals', access: 'granted' }, methods: {}, pages: {} }) }
+    }
+    await discover({ baseUrl: 'https://rpc.example.test', wiki: 'acme_deals', token: 'at1', fetch })
+    await discover({ baseUrl: 'https://rpc.example.test', wiki: 'acme_deals', token: async () => 'at2', fetch })
+    seen.should.eql(['Bearer at1', 'Bearer at2'])
+    await discover({ baseUrl: 'https://rpc.example.test', wiki: 'acme_deals', token: 'at1', fetch: async () => ({ ok: false, status: 404 }) })
+      .should.be.rejectedWith(/no wiki named acme_deals that this sign-in may read/)
+    await discover({ baseUrl: 'https://rpc.example.test', wiki: 'acme_deals', token: 'at1', fetch: async () => ({ ok: false, status: 401 }) })
+      .should.be.rejectedWith(/sign in again/)
+  })
+
   it('fullPathOf accepts relative and full paths alike', () => {
     fullPathOf('acme_labs', '').should.equal('acme_labs')
     fullPathOf('acme_labs', 'docs.intro').should.equal('acme_labs.docs.intro')
