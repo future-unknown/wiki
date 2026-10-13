@@ -276,7 +276,8 @@ metadata — merged field-wise with `wiki meta`; the records themselves
 do not. Record storage speaks the DynamoDB API behind the scenes: a
 local [dynoxide](https://dynoxide.dev) sidecar in development and
 self-hosting, AWS DynamoDB at scale — same client, different endpoint
-(`WIKI_RECORDS_URL`).
+(`WIKI_RECORDS_URL`). Record reads are strongly consistent, so a record
+reads back the moment its put returns on either.
 
 Pages link to each other with wikilinks — `[[docs.cli]]` or
 `[[docs.cli|the CLI guide]]` — wiki-relative dot-paths in plain text,
