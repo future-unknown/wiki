@@ -40,6 +40,21 @@ describe('record store requests', () => {
     requests[0].body.ConsistentRead.should.equal(true)
   })
 
+  it('reads a range from the start without an empty key value, which AWS refuses', async () => {
+    const store = openRecordStore({ endpoint, table: 'records' })
+    await store.query({ pk: 'wiki_1', from: '', to: '￿' })
+    const { KeyConditionExpression, ExpressionAttributeValues } = requests[0].body
+    KeyConditionExpression.should.equal('pk = :pk AND sk <= :to')
+    Object.values(ExpressionAttributeValues).forEach((value) => value.S.should.not.equal(''))
+  })
+
+  it('reads a bounded range between its ends', async () => {
+    const store = openRecordStore({ endpoint, table: 'records' })
+    await store.query({ pk: 'wiki_1', from: 'node_1#', to: 'node_1#￿' })
+    requests[0].body.KeyConditionExpression.should.equal('pk = :pk AND sk BETWEEN :from AND :to')
+    requests[0].body.ExpressionAttributeValues[':from'].S.should.equal('node_1#')
+  })
+
   it('queries a range consistently', async () => {
     const store = openRecordStore({ endpoint, table: 'records' })
     const page = await store.query({ pk: 'wiki_1', from: '', to: '￿', limit: 10 })
