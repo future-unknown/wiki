@@ -120,6 +120,36 @@ describe('wiki/store', () => {
     await store.getState().del('tasks', 'missing').should.be.rejectedWith(/not found/)
   })
 
+  it('applies what a watch heard: settles a burst into one reload of what is shown, and leaves the rest alone', async () => {
+    const { rpc, calls, methods } = await seeded()
+    const store = createWikiStore({ rpc, wiki: 'acme_labs', settleMs: 20 })
+    await store.getState().loadTree()
+    await store.getState().loadPage('tasks')
+    await store.getState().loadData('tasks')
+    const count = (method) => calls.filter(([name]) => name === method).length
+    const before = { tree: count('wiki.tree'), get: count('wiki.get'), data: count('wiki.data') }
+
+    // another page, a burst: one tree reload, and the shown page untouched
+    for (let i = 0; i < 5; i++) store.getState().applyChange({ type: 'change', wiki: 'acme_labs', path: 'log', action: 'wiki.put' })
+    // another wiki's changes are not this store's
+    store.getState().applyChange({ type: 'change', wiki: 'acme_other', path: 'tasks', action: 'wiki.set' })
+    await until(() => count('wiki.tree') === before.tree + 1)
+    await new Promise((resolve) => setTimeout(resolve, 40))
+    count('wiki.tree').should.equal(before.tree + 1)
+    count('wiki.get').should.equal(before.get)
+
+    // the shown page itself: it and its records reload, in place
+    await methods['wiki.set'](PRINCIPAL, { path: 'acme_labs.tasks', content: 'Tasks, live.' })
+    store.getState().applyChange({ type: 'change', wiki: 'acme_labs', path: 'tasks', action: 'wiki.set' })
+    await until(() => store.getState().page.content === 'Tasks, live.')
+    store.getState().pageStatus.should.equal('loaded')
+    await until(() => count('wiki.data') === before.data + 1)
+
+    // a resync says anything may have changed
+    store.getState().applyChange({ type: 'resync', wiki: 'acme_labs', path: null, action: null })
+    await until(() => count('wiki.get') === before.get + 2)
+  })
+
   it('a write refreshes the addressed page’s records in the background', async () => {
     const { rpc } = await seeded()
     const store = createWikiStore({ rpc, wiki: 'acme_labs' })

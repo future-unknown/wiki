@@ -158,7 +158,7 @@ package in any consumer that imports `wiki/store`.
 
 `wiki/session` signs a person in to a browser app with Known, as a
 zustand vanilla store beside `wiki/store`: OAuth 2.0's authorization
-code flow with PKCE, for an app registered in Known (Settings → Apps,
+code flow with PKCE, for an app registered in Known (Sites,
 or `known <org> apps create`) with the wikis it reads attached. The
 host document (`discoverHost`) names Known's sign-in page and the
 token endpoints.
@@ -195,6 +195,40 @@ state; `getToken()` answers it, refreshed a minute before it lapses.
 refresh takes a Web Lock and reads the newest token inside it, and two
 tabs never present the same one. Signing out (`signOut()`) revokes the
 sign-in at Known, and every tab follows.
+
+## Consuming: live updates
+
+`createWatchStore` (also from `wiki/session`) keeps a site current: one
+connection to Known for every wiki the site reads for the person signed
+in — the rpc host's `app.watch` stream — and one per browser, not per
+tab. The tab that takes a Web Lock holds the stream and passes what it
+hears to the app's other tabs over a BroadcastChannel; when it closes,
+another tab takes over. It is another zustand vanilla store, so a view
+selects its state the same way.
+
+```js
+import { createWatchStore, followChanges } from 'wiki/session'
+
+const watch = createWatchStore({ session, baseUrl: host })
+followChanges(watch, store)                 // each change reloads what `store` shows
+watch.getState().start()
+
+useStore(watch, (s) => s.status)            // 'connecting' | 'live' | 'polling' | 'signed-out' | 'stopped'
+watch.getState().onChange((change) => {})   // { type: 'change' | 'resync', wiki, path, action }
+```
+
+A `change` names one page (its `path` relative to the wiki, null for
+the root) or its records; a `resync` says anything in the wiki may have
+changed unseen — after a reconnect, a takeover, or a poll. The wiki
+store's `applyChange` settles a burst into one background reload of the
+tree and, when it is touched, the addressed page with its records and
+history. The stream ends when its token lapses and the watch reconnects
+with a fresh one; a dropped connection backs off from a second to half a
+minute. Live updates are a plan feature: without it the host refuses,
+and the watch polls instead — a resync once a minute, and another try at
+live every quarter hour (`status: 'polling'`). If the person may no
+longer use the app, it stops (`status: 'stopped'`, with an `error`)
+until the sign-in changes.
 
 ## Development
 
