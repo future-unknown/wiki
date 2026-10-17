@@ -173,7 +173,7 @@ const { signIn } = await discoverHost({ baseUrl: host })
 const session = createSessionStore({
   clientId: 'app_…',                       // as registered
   redirectUri: 'https://deals.example/',   // exactly as registered
-  scope: scopeFor('deals'),                // the site's names for its wikis
+  scope: scopeFor('deals'),                // the wikis' names
   signIn
 })
 
@@ -188,10 +188,10 @@ const store = createWikiStore({ rpc, wiki: 'deals', discovery })
 const { response: me } = await rpc.app.whoami({})
 ```
 
-A site calls each wiki it reads by its own name for it, given when the wiki
-was attached (`known <org> apps attach <client-id> deals --as deals`, the
-wiki's own name by default): its scope, its paths (`deals.q3`), the results
-and the live stream all speak it, and the organization is the token's. GET
+A site calls each wiki it reads by the wiki's name: its scope, its paths
+(`deals.q3`), the results and the live stream all speak it, and the
+organization is the token's. (A site attached before this keeps the address
+it was made with, `acme_deals`, until the wiki is attached again.) GET
 `/rpc` with the token is the site's whole document — every wiki it reads for
 the person, what each is for, their level and capabilities — and
 `discover({ wiki })` reads one of them, `/rpc/<name>`. A refreshed token is
