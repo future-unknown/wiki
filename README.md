@@ -173,7 +173,7 @@ const { signIn } = await discoverHost({ baseUrl: host })
 const session = createSessionStore({
   clientId: 'app_…',                       // as registered
   redirectUri: 'https://deals.example/',   // exactly as registered
-  scope: scopeFor('acme_deals'),
+  scope: scopeFor('deals'),                // the site's names for its wikis
   signIn
 })
 
@@ -181,9 +181,22 @@ const { returnTo } = await session.getState().start()   // swaps a returning cod
 if (session.getState().status === 'signed-out') await session.getState().signIn({ returnTo: location.hash })
 
 const rpc = createClient(host, null, methodryAuth(session))
-const discovery = await discover({ baseUrl: host, wiki: 'acme_deals', token: session.getState().getToken })
-const store = createWikiStore({ rpc, wiki: 'acme_deals', discovery })
+const discovery = await discover({ baseUrl: host, wiki: 'deals', token: session.getState().getToken })
+const store = createWikiStore({ rpc, wiki: 'deals', discovery })
+
+// what this person may reach, wiki by wiki: show them that; the server refuses the rest
+const { response: me } = await rpc.app.whoami({})
 ```
+
+A site calls each wiki it reads by its own name for it, given when the wiki
+was attached (`known <org> apps attach <client-id> deals --as deals`, the
+wiki's own name by default): its scope, its paths (`deals.q3`), the results
+and the live stream all speak it, and the organization is the token's. GET
+`/rpc` with the token is the site's whole document — every wiki it reads for
+the person, what each is for, their level and capabilities — and
+`discover({ wiki })` reads one of them, `/rpc/<name>`. A refreshed token is
+granted again from what the person may read then, so `wikis` follows access
+granted after sign-in.
 
 The state is what a view renders — `status` (`idle`, `checking`,
 `signed-in`, `signed-out`, `redirecting`, `unreachable`), the `wikis`
