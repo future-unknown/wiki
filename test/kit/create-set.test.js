@@ -21,7 +21,7 @@ describe('wiki creation', () => {
     should(root.title).be.null()
     root.metadata.should.deepEqual({})
     root.revisionId.should.be.a.String()
-    root.commitId.should.be.a.Number()
+    root.changeId.should.be.a.Number()
   })
 
   it('resolves a wiki by slug', async () => {
@@ -60,9 +60,9 @@ describe('wiki creation', () => {
 
     // root, intermediate, and leaf all belong to a single commit
     commitCount(db, root.id).should.equal(1)
-    root.commitId.should.equal(leaf.commitId)
-    about.commitId.should.equal(leaf.commitId)
-    const commit = await kit.getCommit({ wikiId: root.id, commitId: leaf.commitId })
+    root.changeId.should.equal(leaf.changeId)
+    about.changeId.should.equal(leaf.changeId)
+    const commit = await kit.getChange({ wikiId: root.id, changeId: leaf.changeId })
     commit.revisions.length.should.equal(3)
   })
 
@@ -76,7 +76,7 @@ describe('wiki creation', () => {
   it('records the creating actor on the commit', async () => {
     const { kit } = await createTestKit()
     const root = await kit.createWiki({ slug: 'acme', content: 'hi', actor: agent, message: 'init' })
-    const commit = await kit.getCommit({ wikiId: root.id, commitId: root.commitId })
+    const commit = await kit.getChange({ wikiId: root.id, changeId: root.changeId })
     commit.actor.should.deepEqual({ type: 'agent', id: 'agent_test', onBehalfOf: 'user_test' })
     commit.message.should.equal('init')
   })
@@ -86,17 +86,17 @@ describe('wiki creation', () => {
     const { wikiId } = await seedAcme(kit)
 
     const original = await kit.getNode({ wikiId, path: 'about.foo' })
-    original.commit.actor.should.deepEqual({ type: 'human', id: 'user_test', onBehalfOf: null })
+    original.change.actor.should.deepEqual({ type: 'human', id: 'user_test', onBehalfOf: null })
 
     await kit.setNode({ wikiId, path: 'about.foo', content: 'v2', actor: agent, message: 'agent pass' })
     const updated = await kit.getNode({ wikiId, path: 'about.foo' })
-    updated.commit.actor.should.deepEqual({ type: 'agent', id: 'agent_test', onBehalfOf: 'user_test' })
-    updated.commit.message.should.equal('agent pass')
-    updated.commit.id.should.equal(updated.commitId)
+    updated.change.actor.should.deepEqual({ type: 'agent', id: 'agent_test', onBehalfOf: 'user_test' })
+    updated.change.message.should.equal('agent pass')
+    updated.change.id.should.equal(updated.changeId)
 
     // historical reads carry the provenance of their own commit
-    const past = await kit.getNode({ wikiId, path: 'about.foo', commitId: original.commitId })
-    past.commit.actor.id.should.equal('user_test')
+    const past = await kit.getNode({ wikiId, path: 'about.foo', changeId: original.changeId })
+    past.change.actor.id.should.equal('user_test')
   })
 
   it('requires an actor', async () => {
@@ -165,9 +165,9 @@ describe('setNode', () => {
     auth.content.should.equal('')
 
     // all three revisions belong to one commit
-    leaf.node.commitId.should.equal(arch.commitId)
-    leaf.node.commitId.should.equal(auth.commitId)
-    const commit = await kit.getCommit({ wikiId, commitId: leaf.node.commitId })
+    leaf.node.changeId.should.equal(arch.changeId)
+    leaf.node.changeId.should.equal(auth.changeId)
+    const commit = await kit.getChange({ wikiId, changeId: leaf.node.changeId })
     commit.revisions.length.should.equal(3)
   })
 
@@ -244,7 +244,7 @@ describe('optimistic concurrency', () => {
     const foo = await kit.getNode({ wikiId, path: 'about.foo' })
     await kit.setNode({ wikiId, path: 'about.foo', content: 'v2', actor: human })
     await kit.setNode({
-      wikiId, path: 'about.foo', content: 'v3', expectedRevisionId: foo.revisionId, actor: human
+      wikiId, path: 'about.foo', content: 'v3', ifRevision: foo.revisionId, actor: human
     }).should.be.rejectedWith(RevisionConflictError)
   })
 
@@ -253,7 +253,7 @@ describe('optimistic concurrency', () => {
     const { wikiId } = await seedAcme(kit)
     const foo = await kit.getNode({ wikiId, path: 'about.foo' })
     const result = await kit.setNode({
-      wikiId, path: 'about.foo', content: 'v2', expectedRevisionId: foo.revisionId, actor: human
+      wikiId, path: 'about.foo', content: 'v2', ifRevision: foo.revisionId, actor: human
     })
     result.changed.should.be.true()
   })
@@ -266,7 +266,7 @@ describe('optimistic concurrency', () => {
     await kit.setNode({ wikiId, path: 'sales', content: 'Sales docs', actor: agent })
     await kit.setNode({ wikiId, path: 'about.bar', content: 'bar v2', actor: agent })
     const result = await kit.setNode({
-      wikiId, path: 'about.foo', content: 'foo v2', expectedRevisionId: foo.revisionId, actor: human
+      wikiId, path: 'about.foo', content: 'foo v2', ifRevision: foo.revisionId, actor: human
     })
     result.changed.should.be.true()
     result.node.content.should.equal('foo v2')
@@ -276,7 +276,7 @@ describe('optimistic concurrency', () => {
     const { kit } = await createTestKit()
     const { wikiId } = await seedAcme(kit)
     await kit.setNode({
-      wikiId, path: 'about.new', content: 'x', expectedRevisionId: 'rev-does-not-exist', actor: human
+      wikiId, path: 'about.new', content: 'x', ifRevision: 'rev-does-not-exist', actor: human
     }).should.be.rejectedWith(RevisionConflictError)
   })
 })

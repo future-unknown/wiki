@@ -10,8 +10,8 @@ describe('historical reconstruction', () => {
     await kit.setNode({ wikiId, path: 'about.foo', content: 'foo v2', actor: human })
     await kit.setNode({ wikiId, path: 'about.qux', content: 'later addition', actor: human })
 
-    const snapshot = await kit.getSnapshot({ wikiId, commitId: fooV1.commitId })
-    snapshot.commitId.should.equal(fooV1.commitId)
+    const snapshot = await kit.getSnapshot({ wikiId, changeId: fooV1.changeId })
+    snapshot.changeId.should.equal(fooV1.changeId)
     const paths = snapshot.nodes.map((node) => node.path)
     paths.should.deepEqual(['', 'about', 'about.foo'])
     const foo = snapshot.nodes.find((node) => node.path === 'about.foo')
@@ -22,25 +22,25 @@ describe('historical reconstruction', () => {
   it('reconstructs deleted state: present before, absent after', async () => {
     const { kit } = await createTestKit()
     const { wikiId } = await seedAcme(kit)
-    const beforeDelete = (await kit.getNode({ wikiId, path: 'about.baz' })).commitId
+    const beforeDelete = (await kit.getNode({ wikiId, path: 'about.baz' })).changeId
     const result = await kit.deleteNode({ wikiId, path: 'about.baz', actor: human })
 
-    const before = await kit.getSnapshot({ wikiId, commitId: result.commitId - 1 })
+    const before = await kit.getSnapshot({ wikiId, changeId: result.changeId - 1 })
     before.nodes.map((node) => node.path).should.containEql('about.baz')
-    const after = await kit.getSnapshot({ wikiId, commitId: result.commitId })
+    const after = await kit.getSnapshot({ wikiId, changeId: result.changeId })
     after.nodes.map((node) => node.path).should.not.containEql('about.baz')
 
-    const past = await kit.getNode({ wikiId, path: 'about.baz', commitId: beforeDelete })
+    const past = await kit.getNode({ wikiId, path: 'about.baz', changeId: beforeDelete })
     past.content.should.equal('This is all about baz')
   })
 
   it('serves a tree at a commit', async () => {
     const { kit } = await createTestKit()
     const { wikiId } = await seedAcme(kit)
-    const fooCommit = (await kit.getNode({ wikiId, path: 'about.foo' })).commitId
+    const fooCommit = (await kit.getNode({ wikiId, path: 'about.foo' })).changeId
     await kit.setNode({ wikiId, path: 'about.qux', content: 'later', actor: human })
 
-    const tree = await kit.getTree({ wikiId, commitId: fooCommit })
+    const tree = await kit.getTree({ wikiId, changeId: fooCommit })
     tree.path.should.equal('')
     tree.children.length.should.equal(1)
     tree.children[0].slug.should.equal('about')
@@ -64,10 +64,10 @@ describe('historical reconstruction', () => {
     nowTree.children.map((child) => child.slug).should.deepEqual(['early', 'late'])
   })
 
-  it('rejects commitId and at together', async () => {
+  it('rejects changeId and at together', async () => {
     const { kit } = await createTestKit()
     const { wikiId } = await seedAcme(kit)
-    await kit.getTree({ wikiId, commitId: 1, at: new Date().toISOString() })
+    await kit.getTree({ wikiId, changeId: 1, at: new Date().toISOString() })
       .should.be.rejectedWith(ValidationError)
   })
 
@@ -81,7 +81,7 @@ describe('historical reconstruction', () => {
   it('rejects an unknown commit id', async () => {
     const { kit } = await createTestKit()
     const { wikiId } = await seedAcme(kit)
-    await kit.getSnapshot({ wikiId, commitId: 9999 }).should.be.rejectedWith(NotFoundError)
+    await kit.getSnapshot({ wikiId, changeId: 9999 }).should.be.rejectedWith(NotFoundError)
   })
 
   it('returns node history newest-first with commit info', async () => {
@@ -91,8 +91,8 @@ describe('historical reconstruction', () => {
     const history = await kit.getNodeHistory({ wikiId, path: 'about.foo' })
     history.length.should.equal(2)
     history[0].content.should.equal('v2')
-    history[0].commit.message.should.equal('second draft')
-    history[0].commit.actor.type.should.equal('human')
+    history[0].change.message.should.equal('second draft')
+    history[0].change.actor.type.should.equal('human')
     history[1].content.should.equal('This is all about foo')
   })
 })
@@ -108,7 +108,7 @@ describe('getRevision', () => {
     revision.path.should.equal('about.foo')
     revision.kind.should.equal('updated')
     revision.content.should.equal('foo v2')
-    revision.commit.message.should.equal('second draft')
+    revision.change.message.should.equal('second draft')
     revision.previous.revisionId.should.equal(v1.revisionId)
     revision.previous.content.should.equal('This is all about foo')
   })
@@ -132,7 +132,7 @@ describe('getRevision', () => {
     afterMove.previous.slug.should.equal('foo')
     const removed = await kit.deleteNode({ wikiId, path: 'foo', actor: human })
     const history = await kit.getNodeHistory({ wikiId, path: 'foo' })
-    history[0].commitId.should.equal(removed.commitId)
+    history[0].changeId.should.equal(removed.changeId)
     const tombstone = await kit.getRevision({ wikiId, revisionId: history[0].revisionId })
     tombstone.kind.should.equal('deleted')
     tombstone.path.should.equal('foo')
@@ -149,11 +149,11 @@ describe('getRevision', () => {
   })
 })
 
-describe('getCommit', () => {
+describe('getChange', () => {
   it('returns commit metadata and touched revisions', async () => {
     const { kit } = await createTestKit()
     const root = await kit.createWiki({ slug: 'acme', content: 'root', actor: human, message: 'genesis' })
-    const commit = await kit.getCommit({ wikiId: root.id, commitId: root.commitId })
+    const commit = await kit.getChange({ wikiId: root.id, changeId: root.changeId })
     commit.message.should.equal('genesis')
     commit.revisions.length.should.equal(1)
     commit.revisions[0].nodeId.should.equal(root.id)
@@ -163,6 +163,6 @@ describe('getCommit', () => {
     const { kit } = await createTestKit()
     const a = await kit.createWiki({ slug: 'aaa', content: 'a', actor: human })
     const b = await kit.createWiki({ slug: 'bbb', content: 'b', actor: human })
-    await kit.getCommit({ wikiId: a.id, commitId: b.commitId }).should.be.rejectedWith(NotFoundError)
+    await kit.getChange({ wikiId: a.id, changeId: b.changeId }).should.be.rejectedWith(NotFoundError)
   })
 })

@@ -126,7 +126,7 @@ describe('wiki/session watch', () => {
     watch.getState().status.should.equal('connecting')
     await until(() => host.streams.length === 1)
     host.calls[0].url.should.equal(`${BASE}/rpc`)
-    host.calls[0].body.method.should.equal('app.watch')
+    host.calls[0].body.method.should.equal('site.watch')
     host.calls[0].authorization.should.equal('Bearer at1')
 
     const heard = []
@@ -143,9 +143,9 @@ describe('wiki/session watch', () => {
     heard.should.have.length(0)
 
     host.streams[0].send({ type: 'heartbeat' })
-    host.streams[0].send({ type: 'change', wiki: 'acme_deals', path: 'q3', action: 'wiki.set' })
+    host.streams[0].send({ type: 'change', wiki: 'acme_deals', path: 'q3', action: 'wiki.write' })
     await until(() => heard.length === 1)
-    heard[0].should.containEql({ type: 'change', wiki: 'acme_deals', path: 'q3', action: 'wiki.set', seq: 1 })
+    heard[0].should.containEql({ type: 'change', wiki: 'acme_deals', path: 'q3', action: 'wiki.write', seq: 1 })
     watch.getState().lastChange.should.containEql({ wiki: 'acme_deals', path: 'q3' })
     applied.should.have.length(1)
   })
@@ -276,7 +276,7 @@ describe('wiki/session watch', () => {
     host.streams[0].send({ type: 'ready', wikis: ['acme_deals'] })
     await until(() => second.getState().status === 'live')
     second.getState().wikis.should.deepEqual(['acme_deals'])
-    host.streams[0].send({ type: 'change', wiki: 'acme_deals', path: 'q3', action: 'wiki.set' })
+    host.streams[0].send({ type: 'change', wiki: 'acme_deals', path: 'q3', action: 'wiki.write' })
     await until(() => heard.length === 1)
     heard[0].should.containEql({ type: 'change', path: 'q3' })
     // one connection for both tabs

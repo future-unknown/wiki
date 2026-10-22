@@ -10,10 +10,10 @@ Everything is a node.
 Every node has a stable identity.
 Nodes form a tree.
 Paths address nodes.
-A page versions by commit, a table record by its own versions, and a log is its own history.
+A page keeps every revision, a table row its own versions, and a log is its own history.
 Every authored mutation creates an immutable node revision.
-Every atomic mutation belongs to a wiki-wide commit.
-A commit defines the complete authored state of the wiki at that point.
+Every atomic mutation belongs to a wiki-wide change (a commit, in storage).
+A change defines the complete authored state of the wiki at that point.
 The current nodes table is a fast projection of that history.
 ```
 
@@ -116,10 +116,10 @@ what the server checks cannot drift:
 ```js
 import { METHOD_DECLARATIONS, validateParams } from 'wiki/api'
 
-METHOD_DECLARATIONS['wiki.get']
-// { describe: 'Read one page: …', params: { path: 'string', commitId: 'number?', at: 'string?' },
+METHOD_DECLARATIONS['wiki.read']
+// { describe: 'Read one page: …', params: { path: 'string', changeId: 'number?', at: 'string?' },
 //   about: { path: 'the full path of the page, wiki slug first', … }, returns: 'page', action: 'read' }
-validateParams('wiki.get', { path: 'docs' })   // throws ValidationError naming the param
+validateParams('wiki.read', { path: 'docs' })   // throws ValidationError naming the param
 ```
 
 ## Consuming: the store
@@ -140,14 +140,14 @@ const store = createWikiStore({ rpc, wiki: 'acme_labs', discovery })
 
 await store.getState().loadTree()
 await store.getState().loadPage('examples.tasks')
-await store.getState().loadData('examples.tasks', { reverse: true })
-store.subscribe((state) => render(state.page, state.data))
+await store.getState().loadRecords('examples.tasks', { reverse: true })
+store.subscribe((state) => render(state.page, state.records))
 
 declarationsOf(store.getState())            // { key, schema, … } from discovery, or null
 ```
 
-On Known's rpc host an app reads; `put` and `del` serve a client the
-host lets write.
+On Known's rpc host a site reads; `setRecord` and `delRecord` serve a client the
+host lets write records.
 
 Given a discovery document, a method the host does not serve is refused
 in the store before any request goes out. Without one, every method is
@@ -156,10 +156,10 @@ package in any consumer that imports `wiki/store`.
 
 ## Consuming: signing in
 
-`wiki/session` signs a person in to a browser app with Known, as a
+`wiki/session` signs a person in to a site with Known, as a
 zustand vanilla store beside `wiki/store`: OAuth 2.0's authorization
-code flow with PKCE, for an app registered in Known (Sites,
-or `known <org> apps create`) with the wikis it reads attached. The
+code flow with PKCE, for a site registered in Known (Sites,
+or `known <org> sites create`) with the wikis it reads attached. The
 host document (`discoverHost`) names Known's sign-in page and the
 token endpoints.
 
@@ -185,7 +185,7 @@ const discovery = await discover({ baseUrl: host, wiki: 'deals', token: session.
 const store = createWikiStore({ rpc, wiki: 'deals', discovery })
 
 // what this person may reach, wiki by wiki: show them that; the server refuses the rest
-const { response: me } = await rpc.app.whoami({})
+const { response: me } = await rpc.site.whoami({})
 ```
 
 A site calls each wiki it reads by the wiki's name: its scope, its paths
@@ -213,9 +213,9 @@ sign-in at Known, and every tab follows.
 
 `createWatchStore` (also from `wiki/session`) keeps a site current: one
 connection to Known for every wiki the site reads for the person signed
-in — the rpc host's `app.watch` stream — and one per browser, not per
+in — the rpc host's `site.watch` stream — and one per browser, not per
 tab. The tab that takes a Web Lock holds the stream and passes what it
-hears to the app's other tabs over a BroadcastChannel; when it closes,
+hears to the site's other tabs over a BroadcastChannel; when it closes,
 another tab takes over. It is another zustand vanilla store, so a view
 selects its state the same way.
 
@@ -240,7 +240,7 @@ with a fresh one; a dropped connection backs off from a second to half a
 minute. Live updates are a plan feature: without it the host refuses,
 and the watch polls instead — a resync once a minute, and another try at
 live every quarter hour (`status: 'polling'`). If the person may no
-longer use the app, it stops (`status: 'stopped'`, with an `error`)
+longer use the site, it stops (`status: 'stopped'`, with an `error`)
 until the sign-in changes.
 
 ## Development
@@ -261,8 +261,8 @@ Then, in another shell:
 export WIKI_URL=http://localhost:3000
 export WIKI_TOKEN=dev-token
 
-./bin/wiki set acme "This is the Acme wiki"       # creates the wiki
-./bin/wiki set acme.about.foo "Foo"               # wiki + intermediate nodes auto-created as needed
+./bin/wiki write acme "This is the Acme wiki"     # creates the wiki
+./bin/wiki write acme.about.foo "Foo"             # wiki + intermediate pages auto-created as needed
 ./bin/wiki tree acme
 ```
 
@@ -275,37 +275,42 @@ settings panel to browse.
 ## CLI
 
 ```bash
-wiki get <path>              # raw content on stdout; --json for everything
-wiki set <path> [content]    # inline arg, stdin/heredoc, or --file (one only)
-wiki tree <path>             # --depth, --commit, --at
-wiki search <path> <query>   # FTS over the subtree's pages and table records; --limit
-wiki history <path>[/<key>]  # a page's revisions, or a table record's versions, newest first
-wiki diff <path>[/<key>]     # what a revision or a record version changed; --commit, --revision, --version
-wiki links <path>[/<key>]    # what links to a page or a record
-wiki log <path>              # the wiki's change log: commits and the pages they touched; --limit, --before
+# pages: authored writing
+wiki read <path>             # raw content on stdout; --json for everything
+wiki write <path> [content]  # whole page: inline arg, stdin/heredoc, or --file (one only)
+wiki edit <path> --old <text> --new <text>   # replace one exact string; --all for every one
 wiki move <from> <to>        # subtree moves, identity preserved
-wiki rm <path>               # --recursive for subtrees, --if-commit for safety
+wiki rm <path>               # --recursive for subtrees, --if-change for safety
+wiki tree <path>             # --depth, --change, --at
+wiki search <path> <query>   # FTS over the subtree's pages and table records; --limit
+wiki links <path>[/<key>]    # what links to a page or a record
 wiki meta <path> [json]      # merge metadata fields; null removes; --replace swaps
-wiki put <path> [json]       # write a record: a table upserts by key, a log appends
-wiki del <path> <key>        # delete one record by key (or _id on a log)
-wiki data <path> [key]       # read records; --latest, --reverse, --since/--until, --limit, --cursor, --at
+# records: data on a page
+wiki records <path>          # read records; --latest, --reverse, --since/--until, --limit, --cursor, --at
+wiki get <path>/<key>        # one record by key (or _id on a log)
+wiki set <path> [json]       # write a record: a table adds or replaces by key, a log adds an entry
+wiki del <path>/<key>        # delete one record by key (or _id on a log)
+# history and changes
+wiki history <path>[/<key>]  # a page's revisions, or a table row's versions, newest first
+wiki diff <path>[/<key>]     # what a revision or a row version changed; --change, --revision, --version
+wiki changes <path>          # what changed in the wiki, and the pages each change touched; --limit, --before
 ```
 
 Pages take **notes** — append-only feedback attached to the page's
-identity (notes survive moves), outside the commit model so they never
+identity (notes survive moves), outside the change model so they never
 conflict with content edits. Add, list, and resolve them through the
-API/SDK (`wiki.note`, `wiki.notes`, `wiki.resolveNote`); resolution is
+API/SDK (`wiki.addNote`, `wiki.notes`, `wiki.resolveNote`); resolution is
 idempotent and audited. `wiki.notes` with `subtree: true` lists the
 queue for a whole section (or the whole wiki from the root), each note
 naming its page's current path.
 
 Pages also carry **records** — every page is a document you can read
 plus records you can query. A record is a JSON object written with
-`wiki put`, stamped with `_actor`, `_ts`, a version `_v`, and `_id`
-(its address within the page), outside the commit model: no commit,
+`wiki set`, stamped with `_actor`, `_ts`, a version `_v`, and `_id`
+(its address within the page), outside the change model: no change,
 attached to the page's identity, so records survive moves and become
 unreachable with deletion. One declaration decides the behavior: a
-page with `metadata.key` is a **table** (`put` upserts by key,
+page with `metadata.key` is a **table** (`set` adds or replaces by key,
 `--if-version` is compare-and-swap for racing writers, and every
 version of every record is kept beside it — `wiki history` and
 `wiki diff` read them by the record's address, `<page>/<key>`;
@@ -345,7 +350,7 @@ with `--metadata '{"order":1}'` (or via the API) to pin sections to the
 top.
 
 Every meaningful command supports `--json`. Writes support `--if-revision`
-(optimistic concurrency) and `--message`. Historical reads use `--commit <id>`
+(optimistic concurrency) and `--message`. Historical reads use `--change <id>`
 or `--at <iso timestamp>` (mutually exclusive). Configuration comes from
 `WIKI_URL` / `WIKI_TOKEN` or `--url` / `--token`.
 
@@ -392,27 +397,29 @@ keep their revisions (only their derived current paths change).
 
 ## Historical state
 
-Any commit id — or any timestamp, resolved to the latest commit at or before
+Any change id — or any timestamp, resolved to the latest change at or before
 it — can be expanded into the full wiki state: take each node's latest
-revision at or before the commit, drop nodes whose latest state is deleted,
+revision at or before the change, drop nodes whose latest state is deleted,
 and derive paths by walking historical `parent_id + slug` chains. This powers
-`wiki get/tree --commit/--at` and the `wiki.snapshot` API. Current reads
+`wiki read/tree --change/--at` and the `wiki.snapshot` API. Current reads
 never touch history; they use the `nodes` projection.
 
-A single revision is read by id with `wiki.revision` (`kit.getRevision`):
+A single revision is read by id with `wiki.getRevision` (`kit.getRevision`):
 it returns the revision with its node's current path, what it did
 (`kind`: created, updated, moved, deleted), and `previous` — the revision
 before it on the same node, or null for a first one. That pair is what a
-diff reads; revision ids come from `wiki.history` and `wiki.log`.
+diff reads; revision ids come from `wiki.history` and `wiki.changes`.
 
 ## Concurrency model
 
 - **Node revision ids** are the normal optimistic-concurrency mechanism.
   Read a node (`--json` includes `revisionId`), edit, write back with
   `--if-revision`. The write fails with a conflict only if *that node*
-  changed; unrelated commits elsewhere in the wiki never conflict.
-- **Wiki commit ids** are snapshot boundaries, not edit guards. For unusually
-  destructive operations (recursive deletion) `--if-commit` additionally
+  changed; unrelated changes elsewhere in the wiki never conflict.
+  `wiki edit` reads and writes in one transaction, so it needs no guard
+  to stay exact.
+- **Wiki change ids** are snapshot boundaries, not edit guards. For unusually
+  destructive operations (recursive deletion) `--if-change` additionally
   asserts the whole wiki is unchanged since it was inspected.
 
 All mutations run in a single `BEGIN IMMEDIATE` SQLite transaction inside

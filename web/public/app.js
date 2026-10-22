@@ -117,10 +117,10 @@ function renderDataInto (container, node, records) {
   }, [ts, ...fields.map((field) => series[field])], chart)
 }
 
-async function loadData (node) {
+async function loadRecords (node) {
   elements.dataPanel.hidden = true
   try {
-    const { records } = await client.data(node.fullPath, { limit: 500 })
+    const { records } = await client.records(node.fullPath, { limit: 500 })
     // The reader may already be on another page by the time this lands.
     if (selectedPath !== node.fullPath || records.length === 0) return
     elements.dataPanel.hidden = false
@@ -161,7 +161,7 @@ async function hydrateEmbeds (container, rootPath, depth, visited) {
       continue
     }
     try {
-      const node = await client.get(fullPath)
+      const node = await client.read(fullPath)
       target.innerHTML = ''
 
       const header = document.createElement('div')
@@ -182,7 +182,7 @@ async function hydrateEmbeds (container, rootPath, depth, visited) {
       target.appendChild(body)
 
       try {
-        const { records } = await client.data(fullPath, { limit: 500 })
+        const { records } = await client.records(fullPath, { limit: 500 })
         if (records.length > 0) {
           const dataBlock = document.createElement('div')
           dataBlock.className = 'embed-data'
@@ -202,7 +202,7 @@ async function hydrateEmbeds (container, rootPath, depth, visited) {
 
 async function openNode (fullPath) {
   hidePanels()
-  const node = await client.get(fullPath)
+  const node = await client.read(fullPath)
   selectedPath = fullPath
   elements.pageMeta.hidden = false
   elements.pageTitle.textContent = node.title || node.slug
@@ -212,7 +212,7 @@ async function openNode (fullPath) {
   for (const link of elements.tree.querySelectorAll('a')) {
     link.classList.toggle('selected', link.dataset.path === fullPath)
   }
-  await loadData(node)
+  await loadRecords(node)
   await hydrateEmbeds(elements.content, fullPath, 0, new Set([fullPath]))
 }
 
@@ -250,16 +250,16 @@ async function showHistory () {
   const list = document.createElement('ul')
   for (const entry of entries) {
     const item = document.createElement('li')
-    const actor = entry.commit.actor
+    const actor = entry.change.actor
     const who = actor.onBehalfOf ? `${actor.id} for ${actor.onBehalfOf}` : actor.id
     item.innerHTML = ''
     const strong = document.createElement('strong')
-    strong.textContent = `commit ${entry.commitId}`
+    strong.textContent = `change ${entry.changeId}`
     const meta = document.createElement('span')
     meta.className = 'meta'
     meta.textContent = ` · ${entry.createdAt} · ${actor.type}:${who}` +
       (entry.deleted ? ' · deleted' : '') +
-      (entry.commit.message ? ` · ${entry.commit.message}` : '') +
+      (entry.change.message ? ` · ${entry.change.message}` : '') +
       ` · revision ${entry.revisionId}`
     item.appendChild(strong)
     item.appendChild(meta)

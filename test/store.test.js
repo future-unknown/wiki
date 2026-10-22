@@ -37,12 +37,12 @@ async function seeded () {
   const kit = createWikiKit({ db, records: openRecordStore({ endpoint: dynoxide.endpoint, table: uniqueTable() }) })
   await kit.migrate()
   const methods = createWikiMethods({ kit })
-  await methods['wiki.set'](PRINCIPAL, { path: 'acme_labs', title: 'Labs', content: 'Root.' })
-  await methods['wiki.set'](PRINCIPAL, { path: 'acme_labs.tasks', content: 'Tasks.', metadata: { key: 'id' } })
-  await methods['wiki.set'](PRINCIPAL, { path: 'acme_labs.tasks', content: 'Tasks, again.' })
-  await methods['wiki.set'](PRINCIPAL, { path: 'acme_labs.log', content: 'Log.' })
+  await methods['wiki.write'](PRINCIPAL, { path: 'acme_labs', title: 'Labs', content: 'Root.' })
+  await methods['wiki.write'](PRINCIPAL, { path: 'acme_labs.tasks', content: 'Tasks.', metadata: { key: 'id' } })
+  await methods['wiki.write'](PRINCIPAL, { path: 'acme_labs.tasks', content: 'Tasks, again.' })
+  await methods['wiki.write'](PRINCIPAL, { path: 'acme_labs.log', content: 'Log.' })
   for (let i = 1; i <= 7; i++) {
-    await methods['wiki.put'](PRINCIPAL, { path: 'acme_labs.log', value: { n: i }, ts: `2026-01-0${i}T00:00:00Z` })
+    await methods['wiki.set'](PRINCIPAL, { path: 'acme_labs.log', value: { n: i }, ts: `2026-01-0${i}T00:00:00Z` })
   }
   const calls = []
   const rpc = {
@@ -80,32 +80,32 @@ describe('wiki/store', () => {
     await store.getState().loadHistory('tasks')
     store.getState().history.length.should.equal(2)
 
-    await store.getState().loadData('log', { limit: 3, reverse: true })
-    store.getState().data.map((record) => record.n).should.deepEqual([7, 6, 5])
-    should(store.getState().dataCursor).be.ok()
+    await store.getState().loadRecords('log', { limit: 3, reverse: true })
+    store.getState().records.map((record) => record.n).should.deepEqual([7, 6, 5])
+    should(store.getState().recordsCursor).be.ok()
   })
 
   it('pages records forward with the cursor and drops a fetch a newer one supersedes', async () => {
     const { rpc } = await seeded()
     const store = createWikiStore({ rpc, wiki: 'acme_labs', pageSize: 3 })
     await store.getState().loadPage('log')
-    await store.getState().loadData('log')
-    store.getState().data.map((record) => record.n).should.deepEqual([1, 2, 3])
-    await store.getState().loadMoreData()
-    store.getState().data.map((record) => record.n).should.deepEqual([1, 2, 3, 4, 5, 6])
-    await store.getState().loadMoreData()
-    store.getState().data.map((record) => record.n).should.deepEqual([1, 2, 3, 4, 5, 6, 7])
-    should(store.getState().dataCursor).equal(null)
+    await store.getState().loadRecords('log')
+    store.getState().records.map((record) => record.n).should.deepEqual([1, 2, 3])
+    await store.getState().loadMoreRecords()
+    store.getState().records.map((record) => record.n).should.deepEqual([1, 2, 3, 4, 5, 6])
+    await store.getState().loadMoreRecords()
+    store.getState().records.map((record) => record.n).should.deepEqual([1, 2, 3, 4, 5, 6, 7])
+    should(store.getState().recordsCursor).equal(null)
     // nothing more: a no-op
-    await store.getState().loadMoreData()
-    store.getState().data.length.should.equal(7)
+    await store.getState().loadMoreRecords()
+    store.getState().records.length.should.equal(7)
 
     // a reload racing a continuation: the reload wins, no doubling
-    await store.getState().loadData('log')
-    const more = store.getState().loadMoreData()
-    const reload = store.getState().loadData('log', { background: true })
+    await store.getState().loadRecords('log')
+    const more = store.getState().loadMoreRecords()
+    const reload = store.getState().loadRecords('log', { background: true })
     await Promise.all([more, reload])
-    store.getState().data.map((record) => record.n).should.deepEqual([1, 2, 3])
+    store.getState().records.map((record) => record.n).should.deepEqual([1, 2, 3])
   })
 
   it('records a refusal as the loader’s error and throws it from a write', async () => {
@@ -115,9 +115,9 @@ describe('wiki/store', () => {
     store.getState().pageStatus.should.equal('error')
     store.getState().pageError.should.match(/not found/)
 
-    await store.getState().put('log', { n: 8 }).should.be.fulfilled()
-    await store.getState().put('log', 'not a record').should.be.rejectedWith(/value must be an object/)
-    await store.getState().del('tasks', 'missing').should.be.rejectedWith(/not found/)
+    await store.getState().setRecord('log', { n: 8 }).should.be.fulfilled()
+    await store.getState().setRecord('log', 'not a record').should.be.rejectedWith(/value must be an object/)
+    await store.getState().delRecord('tasks', 'missing').should.be.rejectedWith(/not found/)
   })
 
   it('applies what a watch heard: settles a burst into one reload of what is shown, and leaves the rest alone', async () => {
@@ -125,44 +125,44 @@ describe('wiki/store', () => {
     const store = createWikiStore({ rpc, wiki: 'acme_labs', settleMs: 20 })
     await store.getState().loadTree()
     await store.getState().loadPage('tasks')
-    await store.getState().loadData('tasks')
+    await store.getState().loadRecords('tasks')
     const count = (method) => calls.filter(([name]) => name === method).length
-    const before = { tree: count('wiki.tree'), get: count('wiki.get'), data: count('wiki.data') }
+    const before = { tree: count('wiki.tree'), get: count('wiki.read'), data: count('wiki.records') }
 
     // another page, a burst: one tree reload, and the shown page untouched
-    for (let i = 0; i < 5; i++) store.getState().applyChange({ type: 'change', wiki: 'acme_labs', path: 'log', action: 'wiki.put' })
+    for (let i = 0; i < 5; i++) store.getState().applyChange({ type: 'change', wiki: 'acme_labs', path: 'log', action: 'wiki.set' })
     // another wiki's changes are not this store's
-    store.getState().applyChange({ type: 'change', wiki: 'acme_other', path: 'tasks', action: 'wiki.set' })
+    store.getState().applyChange({ type: 'change', wiki: 'acme_other', path: 'tasks', action: 'wiki.write' })
     await until(() => count('wiki.tree') === before.tree + 1)
     await new Promise((resolve) => setTimeout(resolve, 40))
     count('wiki.tree').should.equal(before.tree + 1)
-    count('wiki.get').should.equal(before.get)
+    count('wiki.read').should.equal(before.get)
 
     // the shown page itself: it and its records reload, in place
-    await methods['wiki.set'](PRINCIPAL, { path: 'acme_labs.tasks', content: 'Tasks, live.' })
-    store.getState().applyChange({ type: 'change', wiki: 'acme_labs', path: 'tasks', action: 'wiki.set' })
+    await methods['wiki.write'](PRINCIPAL, { path: 'acme_labs.tasks', content: 'Tasks, live.' })
+    store.getState().applyChange({ type: 'change', wiki: 'acme_labs', path: 'tasks', action: 'wiki.write' })
     await until(() => store.getState().page.content === 'Tasks, live.')
     store.getState().pageStatus.should.equal('loaded')
-    await until(() => count('wiki.data') === before.data + 1)
+    await until(() => count('wiki.records') === before.data + 1)
 
     // a resync says anything may have changed
     store.getState().applyChange({ type: 'resync', wiki: 'acme_labs', path: null, action: null })
-    await until(() => count('wiki.get') === before.get + 2)
+    await until(() => count('wiki.read') === before.get + 2)
   })
 
   it('a write refreshes the addressed page’s records in the background', async () => {
     const { rpc } = await seeded()
     const store = createWikiStore({ rpc, wiki: 'acme_labs' })
     await store.getState().loadPage('tasks')
-    await store.getState().loadData('tasks')
-    store.getState().data.length.should.equal(0)
-    const record = await store.getState().put('tasks', { id: 't1', title: 'Write the store' })
+    await store.getState().loadRecords('tasks')
+    store.getState().records.length.should.equal(0)
+    const record = await store.getState().setRecord('tasks', { id: 't1', title: 'Write the store' })
     record.id.should.equal('t1')
     record._actor.id.should.equal('ada')
-    await until(() => store.getState().data.length === 1)
-    store.getState().data.map((entry) => entry.id).should.deepEqual(['t1'])
-    await store.getState().del('tasks', 't1')
-    await until(() => store.getState().data.length === 0)
+    await until(() => store.getState().records.length === 1)
+    store.getState().records.map((entry) => entry.id).should.deepEqual(['t1'])
+    await store.getState().delRecord('tasks', 't1')
+    await until(() => store.getState().records.length === 0)
   })
 
   it('searches the wiki, and clears on an empty query', async () => {
@@ -178,18 +178,18 @@ describe('wiki/store', () => {
   it('built from discovery: unserved methods are refused before a request, declarations read off the document', async () => {
     const { rpc, calls } = await seeded()
     const discovery = {
-      methods: { 'wiki.get': {}, 'wiki.tree': {}, 'wiki.data': {} },
+      methods: { 'wiki.read': {}, 'wiki.tree': {}, 'wiki.records': {} },
       pages: { 'acme_labs.tasks': { key: 'id', schema: { type: 'object' } } }
     }
     const store = createWikiStore({ rpc, wiki: 'acme_labs', discovery })
     await store.getState().loadPage('tasks')
     should(declarationsOf(store.getState())).deepEqual({ key: 'id', schema: { type: 'object' } })
     should(declarationsOf(store.getState(), 'log')).equal(null)
-    await store.getState().put('tasks', { id: 'x' }).should.be.rejectedWith(/wiki.put is not served by this host/)
+    await store.getState().setRecord('tasks', { id: 'x' }).should.be.rejectedWith(/wiki.set is not served by this host/)
     await store.getState().loadHistory('tasks')
     store.getState().historyStatus.should.equal('error')
     store.getState().historyError.should.match(/not served/)
-    calls.map(([name]) => name).should.deepEqual(['wiki.get'])
+    calls.map(([name]) => name).should.deepEqual(['wiki.read'])
   })
 
   it('refresh reloads what is shown without a flash', async () => {
@@ -197,8 +197,8 @@ describe('wiki/store', () => {
     const store = createWikiStore({ rpc, wiki: 'acme_labs' })
     await store.getState().loadTree()
     await store.getState().loadPage('tasks')
-    await store.getState().loadData('tasks')
-    await methods['wiki.set'](PRINCIPAL, { path: 'acme_labs.tasks', content: 'Tasks, thrice.' })
+    await store.getState().loadRecords('tasks')
+    await methods['wiki.write'](PRINCIPAL, { path: 'acme_labs.tasks', content: 'Tasks, thrice.' })
     const statuses = []
     const unsubscribe = store.subscribe((state) => statuses.push(state.pageStatus))
     await store.getState().refresh()

@@ -30,7 +30,7 @@ describe('deleteNode', () => {
     const result = await kit.deleteNode({ wikiId, path: 'about', recursive: true, actor: human })
     result.deletedPaths.should.deepEqual(['about', 'about.bar', 'about.baz', 'about.foo'])
     commitCount(db, wikiId).should.equal(before + 1)
-    const commit = await kit.getCommit({ wikiId, commitId: result.commitId })
+    const commit = await kit.getChange({ wikiId, changeId: result.changeId })
     commit.revisions.length.should.equal(4)
     commit.revisions.every((revision) => revision.deleted).should.be.true()
     await kit.getNode({ wikiId, path: 'about.baz' }).should.be.rejectedWith(NotFoundError)
@@ -62,28 +62,28 @@ describe('deleteNode', () => {
     history[1].deleted.should.be.false()
   })
 
-  it('honors expectedRevisionId', async () => {
+  it('honors ifRevision', async () => {
     const { kit } = await createTestKit()
     const { wikiId } = await seedAcme(kit)
     const foo = await kit.getNode({ wikiId, path: 'about.foo' })
     await kit.setNode({ wikiId, path: 'about.foo', content: 'v2', actor: human })
     await kit.deleteNode({
-      wikiId, path: 'about.foo', expectedRevisionId: foo.revisionId, actor: human
+      wikiId, path: 'about.foo', ifRevision: foo.revisionId, actor: human
     }).should.be.rejectedWith(RevisionConflictError)
   })
 
-  it('honors the conservative expectedCommitId for subtree deletes', async () => {
+  it('honors the conservative ifChange for subtree deletes', async () => {
     const { kit, db } = await createTestKit()
     const { wikiId } = await seedAcme(kit)
     const latest = db.prepare('SELECT MAX(id) AS id FROM commits WHERE wiki_id = ?').get(wikiId).id
     await kit.setNode({ wikiId, path: 'sales', content: 'new section', actor: human })
     await kit.deleteNode({
-      wikiId, path: 'about', recursive: true, expectedCommitId: latest, actor: human
+      wikiId, path: 'about', recursive: true, ifChange: latest, actor: human
     }).should.be.rejectedWith(RevisionConflictError)
     // with the true latest commit it succeeds
     const current = db.prepare('SELECT MAX(id) AS id FROM commits WHERE wiki_id = ?').get(wikiId).id
     const result = await kit.deleteNode({
-      wikiId, path: 'about', recursive: true, expectedCommitId: current, actor: human
+      wikiId, path: 'about', recursive: true, ifChange: current, actor: human
     })
     result.deletedPaths.length.should.equal(4)
   })

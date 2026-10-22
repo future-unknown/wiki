@@ -58,11 +58,11 @@ describe('wiki-sdk', () => {
   })
 
   it('round-trips the core workflow', async () => {
-    const created = await client.set('acme', { content: 'This is the acme wiki' })
+    const created = await client.write('acme', { content: 'This is the acme wiki' })
     created.created.should.be.true()
-    await client.set('acme.about.foo', { content: '# Foo', title: 'Foo' })
+    await client.write('acme.about.foo', { content: '# Foo', title: 'Foo' })
 
-    const foo = await client.get('acme.about.foo')
+    const foo = await client.read('acme.about.foo')
     foo.content.should.equal('# Foo')
     foo.title.should.equal('Foo')
     foo.fullPath.should.equal('acme.about.foo')
@@ -76,9 +76,9 @@ describe('wiki-sdk', () => {
     const history = await client.history('acme.about.foo')
     history.length.should.equal(1)
 
-    const log = await client.log('acme', { limit: 1 })
+    const log = await client.changes('acme', { limit: 1 })
     log.length.should.equal(1)
-    log[0].changes.map((change) => change.fullPath).should.containEql('acme.about.foo')
+    log[0].pages.map((change) => change.fullPath).should.containEql('acme.about.foo')
 
     const moved = await client.move('acme.about.foo', 'acme.foo')
     moved.fullPath.should.equal('acme.foo')
@@ -86,59 +86,59 @@ describe('wiki-sdk', () => {
     const removed = await client.remove('acme.about')
     removed.deletedPaths.should.deepEqual(['acme.about'])
 
-    const snapshot = await client.snapshot('acme', { commitId: foo.commitId })
+    const snapshot = await client.snapshot('acme', { changeId: foo.changeId })
     snapshot.nodes.map((node) => node.fullPath).should.containEql('acme.about.foo')
 
-    const commit = await client.getCommit('acme', foo.commitId)
+    const commit = await client.getChange('acme', foo.changeId)
     commit.actor.id.should.equal('sdk_test')
 
-    const revision = await client.revision('acme', moved.revisionId)
+    const revision = await client.getRevision('acme', moved.revisionId)
     revision.kind.should.equal('moved')
     revision.fullPath.should.equal('acme.foo')
 
     const wikis = await client.list()
     wikis.map((wiki) => wiki.slug).should.deepEqual(['acme'])
 
-    const note = await client.note('acme.foo', 'needs work')
+    const note = await client.addNote('acme.foo', 'needs work')
     const notes = await client.notes('acme.foo')
     notes.map((entry) => entry.body).should.deepEqual(['needs work'])
     const done = await client.resolveNote('acme.foo', note.id)
     done.resolvedBy.id.should.equal('sdk_test')
     ;(await client.notes('acme.foo')).length.should.equal(0)
 
-    const put = await client.put('acme.foo', { requests: 7 }, { ts: '2026-01-01T00:00:00Z' })
+    const put = await client.set('acme.foo', { requests: 7 }, { ts: '2026-01-01T00:00:00Z' })
     put.fullPath.should.equal('acme.foo')
-    await client.put('acme.foo', { requests: 9 })
-    const data = await client.data('acme.foo', { since: '2026-01-01T00:00:00Z' })
+    await client.set('acme.foo', { requests: 9 })
+    const data = await client.records('acme.foo', { since: '2026-01-01T00:00:00Z' })
     data.records.map((record) => record.requests).should.deepEqual([7, 9])
-    const latest = await client.data('acme.foo', { latest: true })
+    const latest = await client.records('acme.foo', { latest: true })
     latest.records[0].requests.should.equal(9)
     const deleted = await client.del('acme.foo', latest.records[0]._id)
     deleted.record.requests.should.equal(9)
 
-    const meta = await client.meta('acme.foo', { retain: { days: 30 } })
+    const meta = await client.updateMeta('acme.foo', { retain: { days: 30 } })
     meta.changed.should.be.true()
     meta.node.metadata.retain.should.deepEqual({ days: 30 })
   })
 
-  it('supports optimistic concurrency through expectedRevisionId', async () => {
-    await client.set('acme', { content: 'root' })
-    const first = await client.set('acme.doc', { content: 'v1' })
-    await client.set('acme.doc', {
-      content: 'v2', expectedRevisionId: first.node.revisionId
+  it('supports optimistic concurrency through ifRevision', async () => {
+    await client.write('acme', { content: 'root' })
+    const first = await client.write('acme.doc', { content: 'v1' })
+    await client.write('acme.doc', {
+      content: 'v2', ifRevision: first.node.revisionId
     })
-    await client.set('acme.doc', { content: 'v3', expectedRevisionId: first.node.revisionId })
+    await client.write('acme.doc', { content: 'v3', ifRevision: first.node.revisionId })
       .should.be.rejectedWith(RevisionConflictError)
   })
 
   it('maps API errors to typed classes', async () => {
-    await client.get('acme.missing').should.be.rejectedWith(NotFoundError)
+    await client.read('acme.missing').should.be.rejectedWith(NotFoundError)
     const anonymous = new WikiClient({ baseUrl: server.baseUrl })
-    await anonymous.get('acme').should.be.rejectedWith(UnauthenticatedError)
+    await anonymous.read('acme').should.be.rejectedWith(UnauthenticatedError)
   })
 
   it('exposes rpc protocol failures as RpcError', async () => {
-    const raw = await client.rpc('wiki.get', { path: 'acme' }).catch((error) => error)
+    const raw = await client.rpc('wiki.read', { path: 'acme' }).catch((error) => error)
     raw.should.be.instanceOf(NotFoundError) // sanity: domain error, not RpcError
     await client.rpc('wiki.nope', {}).should.be.rejectedWith(RpcError)
   })
@@ -153,15 +153,15 @@ describe('wiki-sdk', () => {
       }
     }
     const spied = new WikiClient({ baseUrl: 'http://example.test', token: 'tok', fetch: spyFetch })
-    const result = await spied.get('acme')
+    const result = await spied.read('acme')
     result.ok.should.be.true()
     seen.url.should.equal('http://example.test/rpc')
     seen.options.headers.authorization.should.equal('Bearer tok')
-    JSON.parse(seen.options.body).method.should.equal('wiki.get')
+    JSON.parse(seen.options.body).method.should.equal('wiki.read')
   })
 
   it('wraps connection failures in NetworkError', async () => {
     const dead = new WikiClient({ baseUrl: 'http://127.0.0.1:1', token: 'x' })
-    await dead.get('acme').should.be.rejectedWith(NetworkError)
+    await dead.read('acme').should.be.rejectedWith(NetworkError)
   })
 })

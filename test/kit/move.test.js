@@ -57,8 +57,8 @@ describe('moveNode', () => {
     backendAfter.revisionId.should.equal(backend.revisionId)
 
     // only the moved node received a revision in the move commit
-    const moveCommitId = (await kit.getNode({ wikiId, path: 'archive.foo' })).commitId
-    const commit = await kit.getCommit({ wikiId, commitId: moveCommitId })
+    const moveCommitId = (await kit.getNode({ wikiId, path: 'archive.foo' })).changeId
+    const commit = await kit.getChange({ wikiId, changeId: moveCommitId })
     commit.revisions.length.should.equal(1)
     db.prepare('SELECT COUNT(*) AS n FROM node_revisions WHERE node_id = ?').get(api.id).n.should.equal(1)
   })
@@ -74,16 +74,16 @@ describe('moveNode', () => {
   it('reconstructs historical paths before and after the move', async () => {
     const { kit } = await createTestKit()
     const { wikiId } = await seedProjects(kit)
-    const beforeCommit = (await kit.getNode({ wikiId, path: 'projects.foo.backend.api' })).commitId
+    const beforeCommit = (await kit.getNode({ wikiId, path: 'projects.foo.backend.api' })).changeId
     const moved = await kit.moveNode({
       wikiId, fromPath: 'projects.foo', toPath: 'archive.foo', actor: human
     })
 
-    const past = await kit.getNode({ wikiId, path: 'projects.foo.backend.api', commitId: beforeCommit })
+    const past = await kit.getNode({ wikiId, path: 'projects.foo.backend.api', changeId: beforeCommit })
     past.path.should.equal('projects.foo.backend.api')
-    const present = await kit.getNode({ wikiId, path: 'archive.foo.backend.api', commitId: moved.commitId })
+    const present = await kit.getNode({ wikiId, path: 'archive.foo.backend.api', changeId: moved.changeId })
     present.id.should.equal(past.id)
-    await kit.getNode({ wikiId, path: 'projects.foo.backend.api', commitId: moved.commitId })
+    await kit.getNode({ wikiId, path: 'projects.foo.backend.api', changeId: moved.changeId })
       .should.be.rejectedWith(NotFoundError)
   })
 
@@ -121,7 +121,7 @@ describe('moveNode', () => {
     }).should.be.rejectedWith(NotFoundError)
   })
 
-  it('honors expectedRevisionId', async () => {
+  it('honors ifRevision', async () => {
     const { kit } = await createTestKit()
     const { wikiId } = await seedProjects(kit)
     const foo = await kit.getNode({ wikiId, path: 'projects.foo' })
@@ -130,7 +130,7 @@ describe('moveNode', () => {
       wikiId,
       fromPath: 'projects.foo',
       toPath: 'archive.foo',
-      expectedRevisionId: foo.revisionId,
+      ifRevision: foo.revisionId,
       actor: human
     }).should.be.rejectedWith(RevisionConflictError)
   })

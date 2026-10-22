@@ -302,7 +302,7 @@ describe('records', () => {
       // deletion counts down; history carries no summary
       await kit.deleteRecord({ wikiId, path: 'about.tasks', key: 't-1', actor: agent })
       ;(await summaryOf('about.tasks')).count.should.equal(1)
-      const past = await kit.getTree({ wikiId, path: '', commitId: 1 })
+      const past = await kit.getTree({ wikiId, path: '', changeId: 1 })
       should(past.records).be.undefined()
     })
 
@@ -398,21 +398,21 @@ describe('records', () => {
     it('counts commits since a moment, setting one actor’s own work aside', async () => {
       const { kit } = await createRecordsKit()
       const { wikiId } = await seedAcme(kit)
-      const all = await kit.countCommits({ wikiId })
+      const all = await kit.countChanges({ wikiId })
       all.should.be.above(0)
       const mark = new Date().toISOString()
       await new Promise((resolve) => setTimeout(resolve, 5))
       const other = { type: 'agent', id: 'agent_other', onBehalfOf: null }
       await kit.setNode({ wikiId, path: 'about.bar', content: 'bar', actor: agent }) // for the human
       await kit.setNode({ wikiId, path: 'about.baz', content: 'baz', actor: other })
-      ;(await kit.countCommits({ wikiId })).should.equal(all + 2)
-      ;(await kit.countCommits({ wikiId, since: mark })).should.equal(2)
+      ;(await kit.countChanges({ wikiId })).should.equal(all + 2)
+      ;(await kit.countChanges({ wikiId, since: mark })).should.equal(2)
       // the human's own work — the agent acted for them — is not news to the human
-      ;(await kit.countCommits({ wikiId, since: mark, except: human.id })).should.equal(1)
-      ;(await kit.countCommits({ wikiId, since: mark, except: other.id })).should.equal(1)
-      ;(await kit.countCommits({ wikiId, since: new Date().toISOString() })).should.equal(0)
-      await kit.countCommits({ wikiId, since: 'yesterday' }).should.be.rejectedWith(ValidationError)
-      await kit.countCommits({ wikiId: 'nope' }).should.be.rejectedWith(NotFoundError)
+      ;(await kit.countChanges({ wikiId, since: mark, except: human.id })).should.equal(1)
+      ;(await kit.countChanges({ wikiId, since: mark, except: other.id })).should.equal(1)
+      ;(await kit.countChanges({ wikiId, since: new Date().toISOString() })).should.equal(0)
+      await kit.countChanges({ wikiId, since: 'yesterday' }).should.be.rejectedWith(ValidationError)
+      await kit.countChanges({ wikiId: 'nope' }).should.be.rejectedWith(NotFoundError)
     })
 
     it('never counts a summary row without a writer as someone else’s activity', async () => {
@@ -910,7 +910,7 @@ describe('records', () => {
       const page = await kit.getNode({ wikiId, path: 'about.foo' })
       await kit.putRecord({ wikiId, path: 'about.foo', value: { n: 1 }, actor: agent })
       const result = await kit.setNode({
-        wikiId, path: 'about.foo', content: 'edited', expectedRevisionId: page.revisionId, actor: human
+        wikiId, path: 'about.foo', content: 'edited', ifRevision: page.revisionId, actor: human
       })
       result.changed.should.be.true()
     })
@@ -977,11 +977,11 @@ describe('records', () => {
       unchanged.changed.should.be.false()
     })
 
-    it('honors expectedRevisionId and requires metadata', async () => {
+    it('honors ifRevision and requires metadata', async () => {
       const { kit } = await createRecordsKit()
       const { wikiId } = await seedAcme(kit)
       await kit.mergeMetadata({
-        wikiId, path: 'about.foo', metadata: { key: 'id' }, expectedRevisionId: 'stale', actor: human
+        wikiId, path: 'about.foo', metadata: { key: 'id' }, ifRevision: 'stale', actor: human
       }).should.be.rejectedWith(RevisionConflictError)
       await kit.mergeMetadata({ wikiId, path: 'about.foo', actor: human })
         .should.be.rejectedWith(ValidationError)

@@ -42,7 +42,7 @@ describe('notes', () => {
     const page = await kit.getNode({ wikiId, path: 'about.foo' })
     await kit.addNote({ wikiId, path: 'about.foo', body: 'note in between', actor: agent })
     const result = await kit.setNode({
-      wikiId, path: 'about.foo', content: 'edited after a note', expectedRevisionId: page.revisionId, actor: human
+      wikiId, path: 'about.foo', content: 'edited after a note', ifRevision: page.revisionId, actor: human
     })
     result.changed.should.be.true()
   })
