@@ -426,7 +426,10 @@ EOF
 Link pages with wikilinks: `[[architecture.deployment]]`, or labeled,
 `[[docs.cli|the CLI guide]]`. Paths are the same wiki-relative dot-paths
 used everywhere else — links resolve within the wiki the page lives in.
-Link a record by its address: `[[crm.contacts/jo|Jo]]`. Inside a
+To link a page of another wiki, put that wiki's name and a colon first:
+`[[handbook:onboarding]]`, `[[handbook:]]` for its root.
+Link a record by its address: `[[crm.contacts/jo|Jo]]`, or in another
+wiki `[[people:contacts/jo|Jo]]`. Inside a
 Markdown table cell, escape the label pipe — `[[path\|Label]]` —
 because tables split cells on a raw `|`. Write links anywhere in page
 content or in any record value; reading surfaces render them as

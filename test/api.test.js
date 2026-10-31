@@ -470,6 +470,22 @@ describe('wiki-api', () => {
         .should.deepEqual([['record', 'acme.people', 'jo', 'Jo Smith']])
     })
 
+    it('shows a backlink from another wiki only to whoever may read that wiki', async () => {
+      const { rpc } = await createTestApi()
+      await rpc('wiki.write', { path: 'acme.people', content: 'People.' })
+      await rpc('wiki.write', { path: 'labs', content: 'Labs.' })
+      await rpc('wiki.write', { path: 'labs.notes', content: 'Ask [[acme:people|the people]].' })
+      await rpc('wiki.write', { path: 'acme.about', content: 'See [[people]].' })
+
+      const all = await rpc('wiki.links', { path: 'acme.people' }, 'read-token')
+      all.result.links.map((link) => [link.wiki, link.fullPath]).should.deepEqual([
+        ['acme', 'acme.about'],
+        ['labs', 'labs.notes']
+      ])
+      const acmeOnly = await rpc('wiki.links', { path: 'acme.people' }, 'acme-token')
+      acmeOnly.result.links.map((link) => link.fullPath).should.deepEqual(['acme.about'])
+    })
+
     it('enforces a declared schema on put', async () => {
       const { rpc } = await createTestApi()
       await rpc('wiki.write', { path: 'acme.survey', content: 'Survey.' })

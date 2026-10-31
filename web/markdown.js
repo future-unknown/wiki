@@ -24,14 +24,16 @@ function safeHref (url) {
   return null
 }
 
-// [[path]] / [[path|label]] — wiki-relative page links. Rendered as
-// anchors carrying data-wikilink; the app resolves them against the
-// current wiki. Code spans are exempt so docs about the syntax stay text.
+// [[path]] / [[path|label]] — wiki-relative page links, and
+// [[wiki:path]] a page of another wiki by its name. Rendered as anchors
+// carrying data-wikilink (and data-wiki for another wiki's); the app
+// resolves a relative one against the current wiki. Code spans are exempt so docs about the syntax stay text.
 // ![[path]] on a line of its own is an embed (see renderMarkdown); in
 // running text it stays literal, so the wikilink pass matches a leading
 // `!` too and leaves those occurrences untouched.
 const PATH_PATTERN = '[a-z0-9][a-z0-9_-]*(?:\\.[a-z0-9][a-z0-9_-]*)*'
-const WIKILINK = new RegExp(`(!?)\\[\\[(${PATH_PATTERN})(?:\\|([^\\]|]+))?\\]\\]`, 'g')
+const WIKI_PATTERN = '[a-z0-9][a-z0-9_-]*'
+const WIKILINK = new RegExp(`(!?)\\[\\[(?:(${WIKI_PATTERN}):(${PATH_PATTERN})?|(${PATH_PATTERN}))(?:\\|([^\\]|]+))?\\]\\]`, 'g')
 const EMBED_LINE = new RegExp(`^!\\[\\[(${PATH_PATTERN})\\]\\]\\s*$`)
 
 function inline (raw) {
@@ -41,9 +43,12 @@ function inline (raw) {
     .split(/(<code>[\s\S]*?<\/code>)/)
     .map((part) => part.startsWith('<code>')
       ? part
-      : part.replace(WIKILINK, (match, bang, path, label) => bang
-        ? match
-        : `<a href="#" data-wikilink="${path}">${(label || path).trim()}</a>`))
+      : part.replace(WIKILINK, (match, bang, wiki, named, relative, label) => {
+        if (bang) return match
+        const path = wiki ? named ?? '' : relative
+        const shown = wiki ? `${wiki}:${path}` : path
+        return `<a href="#" data-wikilink="${path}"${wiki ? ` data-wiki="${wiki}"` : ''}>${(label || shown).trim()}</a>`
+      }))
     .join('')
   text = text.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (match, label, url) => {
     const href = safeHref(url)

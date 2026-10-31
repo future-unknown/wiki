@@ -341,7 +341,8 @@ document.addEventListener('click', (event) => {
   const wikilink = event.target.closest('a[data-wikilink]')
   if (wikilink) {
     event.preventDefault()
-    openNode(config.wiki + '.' + wikilink.dataset.wikilink).catch(showError)
+    const { wiki = config.wiki, wikilink: path } = wikilink.dataset
+    openNode(path ? wiki + '.' + path : wiki).catch(showError)
     return
   }
   const link = event.target.closest('a[data-path], #search-results a')

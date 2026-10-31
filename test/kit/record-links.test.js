@@ -34,16 +34,30 @@ describe('links, record search, and version retention', () => {
   describe('the link grammar', () => {
     it('reads page and record links, labels and embeds alike', () => {
       parseLinks('see [[about.team]], [[about.team|the team]] and ![[usage.daily]]').should.deepEqual([
-        { path: 'about.team', key: null },
-        { path: 'about.team', key: null },
-        { path: 'usage.daily', key: null }
+        { wiki: null, path: 'about.team', key: null },
+        { wiki: null, path: 'about.team', key: null },
+        { wiki: null, path: 'usage.daily', key: null }
       ])
       parseLinks('[[crm.contacts/jo@acme.com]] or [[crm.contacts/a b.c|Jo]]').should.deepEqual([
-        { path: 'crm.contacts', key: 'jo@acme.com' },
-        { path: 'crm.contacts', key: 'a b.c' }
+        { wiki: null, path: 'crm.contacts', key: 'jo@acme.com' },
+        { wiki: null, path: 'crm.contacts', key: 'a b.c' }
       ])
-      parseLinks('[[Not A Path]] [[crm/]] plain text').should.deepEqual([])
+      parseLinks('[[Not A Path]] [[crm/]] [[]] [[/jo]] plain text').should.deepEqual([])
       parseLinks(null).should.deepEqual([])
+    })
+
+    it('reads a link to another wiki by its name, its root included', () => {
+      parseLinks('[[capital:round.terms|terms]], ![[capital:usage]], [[people:contacts/jo]] and [[capital:]]').should.deepEqual([
+        { wiki: 'capital', path: 'round.terms', key: null },
+        { wiki: 'capital', path: 'usage', key: null },
+        { wiki: 'people', path: 'contacts', key: 'jo' },
+        { wiki: 'capital', path: '', key: null }
+      ])
+      // A colon in a key is the key's, with or without a wiki before it.
+      parseLinks('[[events.fit/rebase-2026:jo:fit]] [[general:events.fit/rebase-2026:jo:fit]]').should.deepEqual([
+        { wiki: null, path: 'events.fit', key: 'rebase-2026:jo:fit' },
+        { wiki: 'general', path: 'events.fit', key: 'rebase-2026:jo:fit' }
+      ])
     })
 
     it('collects every link a record carries, once, and never from stamps', () => {
@@ -53,10 +67,12 @@ describe('links, record search, and version retention', () => {
         nested: { about: 'met via [[crm.contacts/sam|Sam]]' },
         _actor: { id: '[[crm.contacts/ghost]]' }
       }).should.deepEqual([
-        { path: 'crm.contacts', key: 'jo' },
-        { path: 'crm.calls', key: null },
-        { path: 'crm.contacts', key: 'sam' }
+        { wiki: null, path: 'crm.contacts', key: 'jo' },
+        { wiki: null, path: 'crm.calls', key: null },
+        { wiki: null, path: 'crm.contacts', key: 'sam' }
       ])
+      // The same address in another wiki is another link.
+      recordLinks({ a: '[[crm.calls]]', b: '[[people:crm.calls]]' }).length.should.equal(2)
     })
 
     it('heads a record by its title, else its name, else its key', () => {
@@ -124,6 +140,37 @@ describe('links, record search, and version retention', () => {
       await kit.putRecord({ wikiId, path: 'crm.calls', value: { who: '[[crm.contacts/jo]]' }, actor: agent })
       db.prepare('SELECT COUNT(*) AS n FROM links WHERE target_key = ?').get('jo').n.should.equal(2)
       ;(await linksTo(kit, wikiId, 'crm.contacts', 'jo')).length.should.equal(1)
+    })
+
+    it('finds links from the store’s other wikis by name, and from its own either way', async () => {
+      const { kit, wikiId } = await createLinkKit()
+      const people = (await kit.createWiki({ slug: 'people', content: 'People', actor: human })).id
+      await kit.setNode({ wikiId: people, path: 'notes', content: 'Jo is [[acme:crm.contacts/jo]]; see [[acme:]] and [[crm.contacts/jo]]', actor: human })
+      await kit.setNode({ wikiId: people, path: 'log', content: 'Calls', actor: human })
+      await kit.putRecord({ wikiId: people, path: 'log', value: { about: '[[acme:crm.contacts/jo|Jo]]' }, actor: agent })
+      await kit.setNode({ wikiId, path: 'about.foo', content: 'Ours: [[acme:crm.contacts/jo]] and [[crm.contacts/jo]]', actor: human })
+
+      const { links } = await kit.getLinks({ wikiId, path: 'crm.contacts', key: 'jo' })
+      // Its own wiki first, each source once however it names the target;
+      // a linking record is read from its own wiki.
+      links.map((link) => [link.wiki, link.path, link.key === null ? null : 'record']).should.deepEqual([
+        ['acme', 'about.foo', null],
+        ['people', 'log', 'record'],
+        ['people', 'notes', null]
+      ])
+      links[1].record.about.should.equal('[[acme:crm.contacts/jo|Jo]]')
+      // A relative link in people means people's own page, not acme's.
+      ;(await kit.getLinks({ wikiId: people, path: 'notes' })).links.should.deepEqual([])
+      ;(await kit.getLinks({ wikiId, path: '' })).links.map((link) => [link.wiki, link.path]).should.deepEqual([['people', 'notes']])
+    })
+
+    it('keeps a renamed wiki’s own backlinks, and leaves links by its old name as written', async () => {
+      const { kit, wikiId } = await createLinkKit()
+      await kit.setNode({ wikiId, path: 'about.foo', content: '[[crm]] and [[acme:crm]]', actor: human })
+      await kit.renameWiki({ wikiId, slug: 'company' })
+      ;(await linksTo(kit, wikiId, 'crm')).should.deepEqual([['about.foo', null]])
+      await kit.setNode({ wikiId, path: 'about.bar', content: '[[company:crm]]', actor: human })
+      ;(await linksTo(kit, wikiId, 'crm')).should.deepEqual([['about.bar', null], ['about.foo', null]])
     })
 
     it('validates its address and options', async () => {
@@ -228,7 +275,25 @@ describe('links, record search, and version retention', () => {
     it('leaves the record backfills pending while there is no record store', async () => {
       const { db } = await createTestKit()
       db.prepare('SELECT id FROM pending_backfills ORDER BY id').all().map((row) => row.id)
-        .should.deepEqual(['record-index', 'record-versions'])
+        .should.deepEqual(['record-index', 'record-versions', 'record-wiki-links'])
+    })
+
+    it('indexes the links to other wikis that content carried before links could name one', async () => {
+      const { kit, db, wikiId } = await createLinkKit()
+      const people = (await kit.createWiki({ slug: 'people', content: 'People', actor: human })).id
+      await kit.setNode({ wikiId: people, path: 'notes', content: 'see [[acme:crm.contacts/jo]]', actor: human })
+      await kit.setNode({ wikiId: people, path: 'log', content: 'Calls', actor: human })
+      await kit.putRecord({ wikiId: people, path: 'log', value: { about: '[[acme:crm.contacts/jo]] and [[notes]]' }, actor: agent })
+
+      // As a store indexed before 011 holds them: no named links at all.
+      db.exec("DELETE FROM links WHERE target_wiki != ''")
+      db.exec("INSERT INTO pending_backfills (id) VALUES ('page-links'), ('record-wiki-links')")
+      await kit.migrate()
+
+      ;(await kit.getLinks({ wikiId, path: 'crm.contacts', key: 'jo' })).links.map((link) => [link.wiki, link.path])
+        .should.deepEqual([['people', 'log'], ['people', 'notes']])
+      ;(await kit.getLinks({ wikiId: people, path: 'notes' })).links.length.should.equal(1)
+      db.prepare('SELECT COUNT(*) AS n FROM pending_backfills').get().n.should.equal(0)
     })
 
     it('lets a host migrate first and backfill once it serves, one process at a time', async () => {

@@ -333,11 +333,14 @@ reads back the moment its put returns on either.
 
 Pages link to each other with wikilinks — `[[docs.cli]]` or
 `[[docs.cli|the CLI guide]]` — wiki-relative dot-paths in plain text,
-and to records by their address, `[[crm.contacts/jo]]`. Reading
+and to records by their address, `[[crm.contacts/jo]]`. A wiki's name
+and a colon link into another wiki of the store: `[[handbook:onboarding]]`,
+`[[people:contacts/jo]]`, `[[handbook:]]` for its root. Reading
 surfaces render them as navigation; the wiki indexes every link in
 page content and in record values, so `wiki links` answers what links
 to any page or record — a record field holding a link is a relation,
-read backwards.
+read backwards — from its own wiki and, for whoever may read them,
+from the others.
 An embed — `![[usage.daily]]` on a line of its own — composes pages:
 reading surfaces render the target page inline (content, data, and
 nested embeds, depth-capped and cycle-safe), which makes a dashboard
