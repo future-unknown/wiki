@@ -284,6 +284,7 @@ wiki rm <path>               # --recursive for subtrees, --if-change for safety
 wiki tree <path>             # --depth, --change, --at
 wiki search <path> <query>   # FTS over the subtree's pages and table records; --limit
 wiki links <path>[/<key>]    # what links to a page or a record
+wiki check <path>            # links in a wiki that resolve to nothing
 wiki meta <path> [json]      # merge metadata fields; null removes; --replace swaps
 # records: data on a page
 wiki records <path>          # read records; --latest, --reverse, --since/--until, --limit, --cursor, --at
@@ -340,7 +341,11 @@ surfaces render them as navigation; the wiki indexes every link in
 page content and in record values, so `wiki links` answers what links
 to any page or record — a record field holding a link is a relation,
 read backwards — from its own wiki and, for whoever may read them,
-from the others.
+from the others. Links inside code are examples, not links. A write
+answers with the links it carries that resolve to nothing (`problems`,
+with the page each most likely meant), a move or a removal with the
+links it left pointing at nothing (`brokenLinks`), and `wiki check`
+lists every such link a wiki holds.
 An embed — `![[usage.daily]]` on a line of its own — composes pages:
 reading surfaces render the target page inline (content, data, and
 nested embeds, depth-capped and cycle-safe), which makes a dashboard

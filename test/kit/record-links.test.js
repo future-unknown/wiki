@@ -60,6 +60,12 @@ describe('links, record search, and version retention', () => {
       ])
     })
 
+    it('reads no links inside code, inline or fenced', () => {
+      parseLinks('see [[a.b]], `[[wiki:path]]` and ``x [[c]] ``\n\n```md\n[[in.fence]]\n```\n[[after]] a stray ` tick [[still]]\n\n~~~\n[[unclosed]]')
+        .map((link) => link.path).should.deepEqual(['a.b', 'after', 'still'])
+      recordLinks({ note: 'write `[[crm.contacts/jo]]` for [[crm.contacts/sam]]' }).map((link) => link.key).should.deepEqual(['sam'])
+    })
+
     it('collects every link a record carries, once, and never from stamps', () => {
       recordLinks({
         person: '[[crm.contacts/jo]]',
@@ -173,6 +179,73 @@ describe('links, record search, and version retention', () => {
       ;(await linksTo(kit, wikiId, 'crm')).should.deepEqual([['about.bar', null], ['about.foo', null]])
     })
 
+    it('says which of a write’s links resolve to nothing, and what each most likely meant', async () => {
+      const { kit, wikiId } = await createLinkKit()
+      await contact(kit, wikiId, { id: 'jo', name: 'Jo' })
+      await kit.setNode({ wikiId, path: 'about.team', content: 'Team', actor: human })
+      const people = (await kit.createWiki({ slug: 'people', content: 'People', actor: human })).id
+      await kit.setNode({ wikiId: people, path: 'contacts', content: 'Contacts', actor: human })
+      const content = [
+        '[[crm.contacts/jo]] [[crm.contacts/ghost]] [[about.team]] [[team]] [[contacts]]',
+        '[[people:contacts]] [[people:nobody]] [[labs:plan]] [[acme:]] [[crm.contacts/ghost|again]]'
+      ].join(' ')
+      await kit.setNode({ wikiId, path: 'about.foo', content, actor: human })
+      const { problems, unchecked } = await kit.checkLinks({ wikiId, path: 'about.foo', links: parseLinks(content) })
+      problems.map(({ wiki, path, key, reason, suggestion }) => [wiki, path, key, reason, suggestion]).should.deepEqual([
+        [null, 'crm.contacts', 'ghost', 'no-record', null],
+        [null, 'team', null, 'no-page', 'about.team'],
+        [null, 'contacts', null, 'no-page', 'crm.contacts'],
+        ['people', 'nobody', null, 'no-page', null],
+        ['labs', 'plan', null, 'no-wiki', null]
+      ])
+      unchecked.should.equal(0)
+    })
+
+    it('stops looking up record keys after the first twenty, and counts the rest', async () => {
+      const { kit, wikiId } = await createLinkKit()
+      const links = Array.from({ length: 23 }, (_, i) => ({ wiki: null, path: 'crm.contacts', key: 'k' + i }))
+      const { problems, unchecked } = await kit.checkLinks({ wikiId, path: 'about.foo', links })
+      problems.length.should.equal(20)
+      unchecked.should.equal(3)
+    })
+
+    it('lists every link a wiki holds that resolves to nothing, with what carries it', async () => {
+      const { kit, wikiId } = await createLinkKit()
+      await kit.setNode({ wikiId, path: 'about.foo', content: '[[gone]] and [[crm]]', actor: human })
+      await kit.setNode({ wikiId, path: 'about.bar', content: '[[gone]]', actor: human })
+      await deal(kit, wikiId, { id: 'd-1', person: '[[crm.contacts/nobody]]' })
+      const { problems } = await kit.brokenLinks({ wikiId })
+      problems.map(({ path, key, reason, sources }) => [path, key, reason, sources]).should.deepEqual([
+        ['gone', null, 'no-page', [{ path: 'about.bar', key: null }, { path: 'about.foo', key: null }]],
+        ['crm.contacts', 'nobody', 'no-record', [{ path: 'crm.pipeline', key: 'd-1' }]]
+      ])
+      ;(await kit.brokenLinks({ wikiId, path: 'crm' })).problems.map((problem) => problem.path).should.deepEqual(['crm.contacts'])
+    })
+
+    it('says which links a move or a removal left pointing at nothing, from any wiki', async () => {
+      const { kit, wikiId } = await createLinkKit()
+      const people = (await kit.createWiki({ slug: 'people', content: 'People', actor: human })).id
+      await kit.setNode({ wikiId, path: 'about.foo', content: '[[crm.calls]] and [[crm]]', actor: human })
+      await kit.setNode({ wikiId: people, path: 'notes', content: '[[acme:crm.calls]]', actor: human })
+      await deal(kit, wikiId, { id: 'd-1', person: '[[crm.contacts/jo]]' })
+
+      await kit.moveNode({ wikiId, fromPath: 'crm.calls', toPath: 'calls', actor: human })
+      const moved = await kit.linksLeftBroken({ wikiId, path: 'crm.calls' })
+      moved.links.map(({ wiki, path, target }) => [wiki, path, target.path]).should.deepEqual([
+        ['acme', 'about.foo', 'crm.calls'],
+        ['people', 'notes', 'crm.calls']
+      ])
+      moved.total.should.equal(2)
+
+      await kit.deleteNode({ wikiId, path: 'crm', recursive: true, actor: human })
+      // The deal went with crm; what still links into it is reported.
+      ;(await kit.linksLeftBroken({ wikiId, path: 'crm' })).links.map(({ wiki, path, target }) => [wiki, path, target.path]).should.deepEqual([
+        ['acme', 'about.foo', 'crm'],
+        ['acme', 'about.foo', 'crm.calls'],
+        ['people', 'notes', 'crm.calls']
+      ])
+    })
+
     it('validates its address and options', async () => {
       const { kit, wikiId } = await createLinkKit()
       await kit.getLinks({ wikiId, path: 'nope' }).should.be.rejectedWith(NotFoundError)
@@ -275,7 +348,7 @@ describe('links, record search, and version retention', () => {
     it('leaves the record backfills pending while there is no record store', async () => {
       const { db } = await createTestKit()
       db.prepare('SELECT id FROM pending_backfills ORDER BY id').all().map((row) => row.id)
-        .should.deepEqual(['record-index', 'record-versions', 'record-wiki-links'])
+        .should.deepEqual(['record-code-links', 'record-index', 'record-versions', 'record-wiki-links'])
     })
 
     it('indexes the links to other wikis that content carried before links could name one', async () => {
@@ -294,6 +367,19 @@ describe('links, record search, and version retention', () => {
         .should.deepEqual([['people', 'log'], ['people', 'notes']])
       ;(await kit.getLinks({ wikiId: people, path: 'notes' })).links.length.should.equal(1)
       db.prepare('SELECT COUNT(*) AS n FROM pending_backfills').get().n.should.equal(0)
+    })
+
+    it('drops the links records were indexed with that were only examples in code', async () => {
+      const { kit, db, wikiId } = await createLinkKit()
+      await deal(kit, wikiId, { id: 'd-1', note: 'write `[[crm.contacts/jo]]` for [[crm.contacts/sam]]' })
+      // As a store indexed before 012 holds it: the example indexed too.
+      const node = db.prepare("SELECT id FROM nodes WHERE path = 'crm.pipeline'").get().id
+      db.prepare("INSERT INTO links (wiki_id, source_node_id, source_key, target_wiki, target_path, target_key) VALUES (?, ?, 'd-1', '', 'crm.contacts', 'jo')").run(wikiId, node)
+      ;(await linksTo(kit, wikiId, 'crm.contacts', 'jo')).length.should.equal(1)
+      db.exec("INSERT INTO pending_backfills (id) VALUES ('record-code-links')")
+      await kit.migrate()
+      ;(await linksTo(kit, wikiId, 'crm.contacts', 'jo')).should.deepEqual([])
+      ;(await linksTo(kit, wikiId, 'crm.contacts', 'sam')).should.deepEqual([['crm.pipeline', 'd-1']])
     })
 
     it('lets a host migrate first and backfill once it serves, one process at a time', async () => {

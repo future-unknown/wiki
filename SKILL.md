@@ -252,6 +252,19 @@ wiki links acme.crm.contacts/jo
 wiki links acme.architecture --json
 ```
 
+### Broken links — `wiki check <path>`
+
+Lists the links a wiki holds — in its pages and its records, or under one
+page — that resolve to nothing, each with why and the pages and records
+that carry it. Writes already report their own links (see *Linking
+between pages*); this finds the ones that were there before, or that a
+move left behind.
+
+```bash
+wiki check acme
+wiki check acme.crm --json
+```
+
 ### Changes — `wiki changes <path>`
 
 What changed in the wiki, newest first: each change with its actor,
@@ -450,10 +463,19 @@ running text or code it stays literal. Embeds resolve the same
 wiki-relative paths as wikilinks; after moving a page, find stale
 embeds the same way you find stale wikilinks.
 
-After moving a page, links pointing at its old path still say the old
-path. Find them with `wiki links <old.path>` before the move (or
-`wiki search "<old.path>"` after it) and update each referring page
-(with `--if-revision`, as always) and record.
+Every write checks its links. `wiki write`, `wiki edit` and `wiki set`
+answer with `problems`: each link that resolves to nothing, why (no such
+wiki, page, or record), and the page it most likely meant —
+`[[team]]: no page team in this wiki; did you mean [[about.team]]?`.
+The write itself stands; a link to a page you are about to create is
+fine. Fix the others before you move on. Links inside code (`` `[[x]]` ``
+or a fenced block) are examples, not links, and are never checked.
+
+After moving or deleting a page, links pointing at its old path still say
+the old path. `wiki move` and `wiki rm` answer with `brokenLinks`: the
+pages and records whose links now point at nothing. Update each one
+(with `--if-revision`, as always), and run `wiki check` to find any you
+missed.
 
 ## Exit codes
 

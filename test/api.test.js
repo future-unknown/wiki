@@ -486,6 +486,73 @@ describe('wiki-api', () => {
       acmeOnly.result.links.map((link) => link.fullPath).should.deepEqual(['acme.about'])
     })
 
+    it('answers a write with the links that resolve to nothing, telling nothing of wikis the writer cannot read', async () => {
+      const { rpc } = await createTestApi()
+      await rpc('wiki.write', { path: 'acme.crm.people', content: 'People.', metadata: { key: 'id' } })
+      await rpc('wiki.write', { path: 'labs', content: 'Labs.' })
+      await rpc('wiki.write', { path: 'labs.plan', content: 'Plan.' })
+
+      const content = '[[crm.people]] [[people]] [[crm.people/ghost]] [[labs:plan]] [[labs:nope]] [[nowhere:x]] `[[not.a.link]]`'
+      const written = await rpc('wiki.write', { path: 'acme.crm.notes', content })
+      written.result.problems.map(({ link, reason, message }) => [link, reason, message]).should.deepEqual([
+        ['people', 'no-page', 'no page people in this wiki; did you mean [[crm.people]]?'],
+        ['crm.people/ghost', 'no-record', 'no record ghost in crm.people'],
+        ['labs:nope', 'no-page', 'no page nope in the labs wiki'],
+        ['nowhere:x', 'no-wiki', 'no wiki named nowhere']
+      ])
+      written.result.problems[0].suggestion.should.equal('crm.people')
+
+      // A writer who cannot read labs learns nothing of what it holds.
+      const guest = await rpc('wiki.edit', { path: 'acme.crm.notes', oldString: '[[people]]', newString: '[[crm.people]]' }, 'acme-token')
+      guest.result.problems.map(({ link, reason }) => [link, reason]).should.deepEqual([
+        ['crm.people/ghost', 'no-record'],
+        ['labs:plan', 'no-wiki'],
+        ['labs:nope', 'no-wiki'],
+        ['nowhere:x', 'no-wiki']
+      ])
+
+      const set = await rpc('wiki.set', { path: 'acme.crm.people', value: { id: 'jo', see: '[[crm.gone]]' } })
+      set.result.problems.map((problem) => problem.link).should.deepEqual(['crm.gone'])
+    })
+
+    it('answers a move and a removal with the links they left pointing at nothing', async () => {
+      const { rpc } = await createTestApi()
+      await rpc('wiki.write', { path: 'acme.crm', content: 'CRM.' })
+      await rpc('wiki.write', { path: 'acme.about', content: 'See [[crm]].' })
+      await rpc('wiki.write', { path: 'labs', content: 'Labs.' })
+      await rpc('wiki.write', { path: 'labs.notes', content: 'See [[acme:crm]].' })
+
+      const moved = await rpc('wiki.move', { from: 'acme.crm', to: 'acme.sales' })
+      moved.result.fullPath.should.equal('acme.sales')
+      moved.result.brokenLinks.total.should.equal(2)
+      moved.result.brokenLinks.links.map((link) => [link.fullPath, link.target.fullPath]).should.deepEqual([
+        ['acme.about', 'acme.crm'],
+        ['labs.notes', 'acme.crm']
+      ])
+      // A mover who cannot read labs is told only of what they can see.
+      await rpc('wiki.move', { from: 'acme.sales', to: 'acme.crm' })
+      const removed = await rpc('wiki.remove', { path: 'acme.crm' }, 'acme-token')
+      removed.result.brokenLinks.links.map((link) => link.fullPath).should.deepEqual(['acme.about'])
+      removed.result.brokenLinks.total.should.equal(1)
+    })
+
+    it('checks a wiki for the links it holds that resolve to nothing', async () => {
+      const { rpc } = await createTestApi()
+      await rpc('wiki.write', { path: 'acme.about', content: 'See [[gone]] and [[about]].' })
+      await rpc('wiki.write', { path: 'acme.about.team', content: 'Also [[gone]].' })
+      await rpc('wiki.write', { path: 'labs', content: 'Labs.' })
+      await rpc('wiki.write', { path: 'labs.plan', content: 'Plan.' })
+      await rpc('wiki.write', { path: 'acme.links', content: '[[labs:plan]] and [[labs:nope]]' })
+      const checked = await rpc('wiki.check', { path: 'acme' }, 'read-token')
+      checked.result.problems.map(({ link, sources }) => [link, sources.map((source) => source.fullPath)]).should.deepEqual([
+        ['gone', ['acme.about', 'acme.about.team']],
+        ['labs:nope', ['acme.links']]
+      ])
+      // Checked by someone who cannot read labs, every link into it is a link to no wiki.
+      const guest = await rpc('wiki.check', { path: 'acme.links' }, 'acme-token')
+      guest.result.problems.map(({ link, reason }) => [link, reason]).should.deepEqual([['labs:plan', 'no-wiki'], ['labs:nope', 'no-wiki']])
+    })
+
     it('enforces a declared schema on put', async () => {
       const { rpc } = await createTestApi()
       await rpc('wiki.write', { path: 'acme.survey', content: 'Survey.' })
