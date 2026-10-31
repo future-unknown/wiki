@@ -60,6 +60,14 @@ describe('links, record search, and version retention', () => {
       ])
     })
 
+    it('reads a link whose label bar is escaped for a table, the backslash no part of its key', () => {
+      parseLinks('| [[about.team\\|Team]] | [[crm.contacts/jo:1\\|Jo]] | [[people:contacts\\|People]] |').should.deepEqual([
+        { wiki: null, path: 'about.team', key: null },
+        { wiki: null, path: 'crm.contacts', key: 'jo:1' },
+        { wiki: 'people', path: 'contacts', key: null }
+      ])
+    })
+
     it('reads no links inside code, inline or fenced', () => {
       parseLinks('see [[a.b]], `[[wiki:path]]` and ``x [[c]] ``\n\n```md\n[[in.fence]]\n```\n[[after]] a stray ` tick [[still]]\n\n~~~\n[[unclosed]]')
         .map((link) => link.path).should.deepEqual(['a.b', 'after', 'still'])
@@ -348,7 +356,7 @@ describe('links, record search, and version retention', () => {
     it('leaves the record backfills pending while there is no record store', async () => {
       const { db } = await createTestKit()
       db.prepare('SELECT id FROM pending_backfills ORDER BY id').all().map((row) => row.id)
-        .should.deepEqual(['record-code-links', 'record-index', 'record-versions', 'record-wiki-links'])
+        .should.deepEqual(['record-code-links', 'record-index', 'record-links-added', 'record-versions', 'record-wiki-links'])
     })
 
     it('indexes the links to other wikis that content carried before links could name one', async () => {
@@ -367,6 +375,22 @@ describe('links, record search, and version retention', () => {
         .should.deepEqual([['people', 'log'], ['people', 'notes']])
       ;(await kit.getLinks({ wikiId: people, path: 'notes' })).links.length.should.equal(1)
       db.prepare('SELECT COUNT(*) AS n FROM pending_backfills').get().n.should.equal(0)
+    })
+
+    it('mends the links an escaped label bar spoiled, in pages and records', async () => {
+      const { kit, db, wikiId } = await createLinkKit()
+      await contact(kit, wikiId, { id: 'jo', name: 'Jo' })
+      await kit.setNode({ wikiId, path: 'about.foo', content: '| who |\n|---|\n| [[crm.contacts\\|People]] |', actor: human })
+      await deal(kit, wikiId, { id: 'd-1', note: '| [[crm.contacts/jo\\|Jo]] |' })
+      // As a store indexed before 013 holds them: the page link missed, the key spoiled.
+      const deals = db.prepare("SELECT id FROM nodes WHERE path = 'crm.pipeline'").get().id
+      db.exec("DELETE FROM links")
+      db.prepare("INSERT INTO links (wiki_id, source_node_id, source_key, target_wiki, target_path, target_key) VALUES (?, ?, 'd-1', '', 'crm.contacts', 'jo\\')").run(wikiId, deals)
+      db.exec("DELETE FROM schema_migrations WHERE id = '013-links-escaped-bars'")
+      await kit.migrate()
+      ;(await linksTo(kit, wikiId, 'crm.contacts', 'jo')).should.deepEqual([['crm.pipeline', 'd-1']])
+      ;(await linksTo(kit, wikiId, 'crm.contacts')).should.deepEqual([['about.foo', null]])
+      db.prepare("SELECT COUNT(*) AS n FROM links WHERE target_key LIKE '%\\'").get().n.should.equal(0)
     })
 
     it('drops the links records were indexed with that were only examples in code', async () => {
