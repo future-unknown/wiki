@@ -107,15 +107,15 @@ describe('wiki creation', () => {
 
 describe('path validation', () => {
   it('accepts valid paths', () => {
-    parseFullPath('acme').should.deepEqual({ slug: 'acme', path: '' })
-    parseFullPath('acme.about.foo-bar').should.deepEqual({ slug: 'acme', path: 'about.foo-bar' })
-    parseFullPath('acme.api_v2.authentication').path.should.equal('api_v2.authentication')
+    parseFullPath('acme:').should.deepEqual({ slug: 'acme', path: '' })
+    parseFullPath('acme:about.foo-bar').should.deepEqual({ slug: 'acme', path: 'about.foo-bar' })
+    parseFullPath('acme:api_v2.authentication').path.should.equal('api_v2.authentication')
     parseRelativePath('').should.deepEqual([])
     parseRelativePath('about.foo').should.deepEqual(['about', 'foo'])
   })
 
   it('rejects malformed paths', () => {
-    for (const bad of ['.acme', 'acme.', 'acme..foo', 'acme.Foo', 'acme.foo.bar.', '', 'acme.-x', 'acme._x', 'a me']) {
+    for (const bad of ['acme', 'acme.about', ':about', 'acme:.foo', 'acme:foo..bar', 'acme:Foo', 'acme:foo.bar.', '', 'acme:-x', 'acme:_x', 'a me:', 'Acme:foo']) {
       (() => parseFullPath(bad)).should.throw(ValidationError)
     }
   })

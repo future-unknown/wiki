@@ -37,12 +37,12 @@ async function seeded () {
   const kit = createWikiKit({ db, records: openRecordStore({ endpoint: dynoxide.endpoint, table: uniqueTable() }) })
   await kit.migrate()
   const methods = createWikiMethods({ kit })
-  await methods['wiki.write'](PRINCIPAL, { path: 'acme_labs', title: 'Labs', content: 'Root.' })
-  await methods['wiki.write'](PRINCIPAL, { path: 'acme_labs.tasks', content: 'Tasks.', metadata: { key: 'id' } })
-  await methods['wiki.write'](PRINCIPAL, { path: 'acme_labs.tasks', content: 'Tasks, again.' })
-  await methods['wiki.write'](PRINCIPAL, { path: 'acme_labs.log', content: 'Log.' })
+  await methods['wiki.write'](PRINCIPAL, { path: 'acme_labs:', title: 'Labs', content: 'Root.' })
+  await methods['wiki.write'](PRINCIPAL, { path: 'acme_labs:tasks', content: 'Tasks.', metadata: { key: 'id' } })
+  await methods['wiki.write'](PRINCIPAL, { path: 'acme_labs:tasks', content: 'Tasks, again.' })
+  await methods['wiki.write'](PRINCIPAL, { path: 'acme_labs:log', content: 'Log.' })
   for (let i = 1; i <= 7; i++) {
-    await methods['wiki.set'](PRINCIPAL, { path: 'acme_labs.log', value: { n: i }, ts: `2026-01-0${i}T00:00:00Z` })
+    await methods['wiki.set'](PRINCIPAL, { path: 'acme_labs:log', value: { n: i }, ts: `2026-01-0${i}T00:00:00Z` })
   }
   const calls = []
   const rpc = {
@@ -71,7 +71,7 @@ describe('wiki/store', () => {
     const state = store.getState()
     state.treeStatus.should.equal('loaded')
     state.tree.children.map((child) => child.slug).should.deepEqual(['log', 'tasks'])
-    recordSummary(state.tree).should.deepEqual([{ fullPath: 'acme_labs.log', count: 7, latestTs: '2026-01-07T00:00:00.000Z' }])
+    recordSummary(state.tree).should.deepEqual([{ fullPath: 'acme_labs:log', count: 7, latestTs: '2026-01-07T00:00:00.000Z' }])
 
     await store.getState().loadPage('tasks')
     store.getState().page.content.should.equal('Tasks, again.')
@@ -139,7 +139,7 @@ describe('wiki/store', () => {
     count('wiki.read').should.equal(before.get)
 
     // the shown page itself: it and its records reload, in place
-    await methods['wiki.write'](PRINCIPAL, { path: 'acme_labs.tasks', content: 'Tasks, live.' })
+    await methods['wiki.write'](PRINCIPAL, { path: 'acme_labs:tasks', content: 'Tasks, live.' })
     store.getState().applyChange({ type: 'change', wiki: 'acme_labs', path: 'tasks', action: 'wiki.write' })
     await until(() => store.getState().page.content === 'Tasks, live.')
     store.getState().pageStatus.should.equal('loaded')
@@ -169,7 +169,7 @@ describe('wiki/store', () => {
     const { rpc } = await seeded()
     const store = createWikiStore({ rpc, wiki: 'acme_labs' })
     await store.getState().search('again')
-    store.getState().results.map((hit) => hit.fullPath).should.deepEqual(['acme_labs.tasks'])
+    store.getState().results.map((hit) => hit.fullPath).should.deepEqual(['acme_labs:tasks'])
     await store.getState().search('  ')
     store.getState().searchStatus.should.equal('idle')
     store.getState().results.should.deepEqual([])
@@ -179,7 +179,7 @@ describe('wiki/store', () => {
     const { rpc, calls } = await seeded()
     const discovery = {
       methods: { 'wiki.read': {}, 'wiki.tree': {}, 'wiki.records': {} },
-      pages: { 'acme_labs.tasks': { key: 'id', schema: { type: 'object' } } }
+      pages: { 'acme_labs:tasks': { key: 'id', schema: { type: 'object' } } }
     }
     const store = createWikiStore({ rpc, wiki: 'acme_labs', discovery })
     await store.getState().loadPage('tasks')
@@ -198,7 +198,7 @@ describe('wiki/store', () => {
     await store.getState().loadTree()
     await store.getState().loadPage('tasks')
     await store.getState().loadRecords('tasks')
-    await methods['wiki.write'](PRINCIPAL, { path: 'acme_labs.tasks', content: 'Tasks, thrice.' })
+    await methods['wiki.write'](PRINCIPAL, { path: 'acme_labs:tasks', content: 'Tasks, thrice.' })
     const statuses = []
     const unsubscribe = store.subscribe((state) => statuses.push(state.pageStatus))
     await store.getState().refresh()
@@ -235,9 +235,9 @@ describe('wiki/store', () => {
   })
 
   it('fullPathOf accepts relative and full paths alike', () => {
-    fullPathOf('acme_labs', '').should.equal('acme_labs')
-    fullPathOf('acme_labs', 'docs.intro').should.equal('acme_labs.docs.intro')
-    fullPathOf('acme_labs', 'acme_labs.docs').should.equal('acme_labs.docs')
-    fullPathOf('acme_labs', 'acme_labs').should.equal('acme_labs')
+    fullPathOf('acme_labs', '').should.equal('acme_labs:')
+    fullPathOf('acme_labs', 'docs.intro').should.equal('acme_labs:docs.intro')
+    fullPathOf('acme_labs', 'acme_labs:docs').should.equal('acme_labs:docs')
+    fullPathOf('acme_labs', 'acme_labs').should.equal('acme_labs:acme_labs')
   })
 })

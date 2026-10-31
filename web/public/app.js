@@ -65,7 +65,7 @@ function renderTreeNode (node) {
 }
 
 async function loadTree () {
-  const tree = await client.tree(config.wiki)
+  const tree = await client.tree(config.wiki + ':')
   elements.tree.innerHTML = ''
   const list = document.createElement('ul')
   list.appendChild(renderTreeNode(tree))
@@ -151,7 +151,7 @@ async function hydrateEmbeds (container, rootPath, depth, visited) {
   for (const target of container.querySelectorAll('[data-embed]')) {
     if (selectedPath !== rootPath) return // reader moved on mid-hydration
     const relPath = target.dataset.embed
-    const fullPath = config.wiki + '.' + relPath
+    const fullPath = config.wiki + ':' + relPath
     if (depth >= EMBED_DEPTH_LIMIT) {
       embedNotice(target, `embed depth limit reached: ${relPath}`)
       continue
@@ -218,7 +218,7 @@ async function openNode (fullPath) {
 
 async function runSearch (query) {
   hidePanels()
-  const results = await client.search(config.wiki, query)
+  const results = await client.search(config.wiki + ':', query)
   elements.searchResults.hidden = false
   elements.searchResults.innerHTML = ''
   const heading = document.createElement('p')
@@ -296,7 +296,7 @@ async function connect () {
       return
     }
     await loadTree()
-    await openNode(config.wiki)
+    await openNode(config.wiki + ':')
   } catch (error) {
     showError(error)
   }
@@ -307,7 +307,7 @@ elements.wikiSelect.addEventListener('change', () => {
   localStorage.setItem('wiki.wiki', config.wiki)
   elements.settingWiki.value = config.wiki
   hidePanels()
-  loadTree().then(() => openNode(config.wiki)).catch(showError)
+  loadTree().then(() => openNode(config.wiki + ':')).catch(showError)
 })
 
 elements.settingsToggle.addEventListener('click', () => {
@@ -342,7 +342,7 @@ document.addEventListener('click', (event) => {
   if (wikilink) {
     event.preventDefault()
     const { wiki = config.wiki, wikilink: path } = wikilink.dataset
-    openNode(path ? wiki + '.' + path : wiki).catch(showError)
+    openNode(wiki + ':' + path).catch(showError)
     return
   }
   const link = event.target.closest('a[data-path], #search-results a')
@@ -357,7 +357,7 @@ elements.settingToken.value = config.token
 elements.settingWiki.value = config.wiki
 
 const initial = location.hash.slice(1)
-if (initial) config.wiki = initial.split('.')[0]
+if (initial) config.wiki = initial.slice(0, initial.indexOf(':'))
 connect().then(() => {
   if (initial) return openNode(initial).catch(showError)
 })

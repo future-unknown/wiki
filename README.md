@@ -17,13 +17,13 @@ A change defines the complete authored state of the wiki at that point.
 The current nodes table is a fast projection of that history.
 ```
 
-Nodes are addressed with dot-separated paths. The first segment is the wiki
-itself; the root node *is* the wiki:
+Nodes are addressed with the wiki's name, a colon, and a dot-separated path
+within it; the root node *is* the wiki:
 
 ```text
-acme
-acme.about
-acme.about.foo
+acme:
+acme:about
+acme:about.foo
 ```
 
 Markdown is the canonical content format. A node can hold content and have
@@ -118,7 +118,7 @@ import { METHOD_DECLARATIONS, validateParams } from 'wiki/api'
 
 METHOD_DECLARATIONS['wiki.read']
 // { describe: 'Read one page: …', params: { path: 'string', changeId: 'number?', at: 'string?' },
-//   about: { path: 'the full path of the page, wiki slug first', … }, returns: 'page', action: 'read' }
+//   about: { path: 'the full path of the page: the wiki name, a colon, the page', … }, returns: 'page', action: 'read' }
 validateParams('wiki.read', { path: 'docs' })   // throws ValidationError naming the param
 ```
 
@@ -135,8 +135,8 @@ stale-response protection. Nothing else — no cache, no TTL, no retry.
 import { createWikiStore, discover, declarationsOf } from 'wiki/store'
 
 // rpc: a methodry client signed in with Known (see Consuming: signing in)
-const discovery = await discover({ baseUrl: 'https://rpc.known.info', wiki: 'acme_labs', token: session.getState().getToken })
-const store = createWikiStore({ rpc, wiki: 'acme_labs', discovery })
+const discovery = await discover({ baseUrl: 'https://rpc.known.info', wiki: 'labs', token: session.getState().getToken })
+const store = createWikiStore({ rpc, wiki: 'labs', discovery })
 
 await store.getState().loadTree()
 await store.getState().loadPage('examples.tasks')
@@ -189,9 +189,8 @@ const { response: me } = await rpc.site.whoami({})
 ```
 
 A site calls each wiki it reads by the wiki's name: its scope, its paths
-(`deals.q3`), the results and the live stream all speak it, and the
-organization is the token's. (A site attached before this keeps the address
-it was made with, `acme_deals`, until the wiki is attached again.) GET
+(`deals:q3`), the results and the live stream all speak it, and the
+organization is the token's. GET
 `/rpc` with the token is the site's whole document — every wiki it reads for
 the person, what each is for, their level and capabilities — and
 `discover({ wiki })` reads one of them, `/rpc/<name>`. A refreshed token is
@@ -261,9 +260,9 @@ Then, in another shell:
 export WIKI_URL=http://localhost:3000
 export WIKI_TOKEN=dev-token
 
-./bin/wiki write acme "This is the Acme wiki"     # creates the wiki
-./bin/wiki write acme.about.foo "Foo"             # wiki + intermediate pages auto-created as needed
-./bin/wiki tree acme
+./bin/wiki write acme: "This is the Acme wiki"     # creates the wiki
+./bin/wiki write acme:about.foo "Foo"             # wiki + intermediate pages auto-created as needed
+./bin/wiki tree acme:
 ```
 
 (Installed as a dependency, the binary is linked as `wiki` in

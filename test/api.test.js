@@ -64,13 +64,13 @@ describe('wiki-api', () => {
   describe('authentication', () => {
     it('rejects requests without a token', async () => {
       const { rpc } = await createTestApi()
-      const body = await rpc('wiki.read', { path: 'acme' }, null)
+      const body = await rpc('wiki.read', { path: 'acme:' }, null)
       body.error.data.code.should.equal('UNAUTHENTICATED')
     })
 
     it('rejects invalid tokens', async () => {
       const { rpc } = await createTestApi()
-      const body = await rpc('wiki.read', { path: 'acme' }, 'wrong')
+      const body = await rpc('wiki.read', { path: 'acme:' }, 'wrong')
       body.error.data.code.should.equal('UNAUTHENTICATED')
     })
   })
@@ -78,28 +78,28 @@ describe('wiki-api', () => {
   describe('authorization', () => {
     it('lets a read-only token read but not write', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme', content: 'root' })
-      const read = await rpc('wiki.read', { path: 'acme' }, 'read-token')
+      await rpc('wiki.write', { path: 'acme:', content: 'root' })
+      const read = await rpc('wiki.read', { path: 'acme:' }, 'read-token')
       read.result.content.should.equal('root')
-      const write = await rpc('wiki.write', { path: 'acme.x', content: 'x' }, 'read-token')
+      const write = await rpc('wiki.write', { path: 'acme:x', content: 'x' }, 'read-token')
       write.error.data.code.should.equal('UNAUTHORIZED')
     })
 
     it('authorizes wiki:create for new root wikis', async () => {
       const { rpc } = await createTestApi()
-      const denied = await rpc('wiki.write', { path: 'acme', content: 'root' }, 'read-token')
+      const denied = await rpc('wiki.write', { path: 'acme:', content: 'root' }, 'read-token')
       denied.error.data.code.should.equal('UNAUTHORIZED')
     })
 
     it('scopes a wiki-scoped token to its wikis', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.about', content: 'about' })
-      await rpc('wiki.write', { path: 'other.about', content: 'about' })
-      const read = await rpc('wiki.read', { path: 'acme.about' }, 'acme-token')
+      await rpc('wiki.write', { path: 'acme:about', content: 'about' })
+      await rpc('wiki.write', { path: 'other:about', content: 'about' })
+      const read = await rpc('wiki.read', { path: 'acme:about' }, 'acme-token')
       read.result.content.should.equal('about')
-      const write = await rpc('wiki.write', { path: 'acme.x', content: 'x' }, 'acme-token')
-      write.result.node.fullPath.should.equal('acme.x')
-      const denied = await rpc('wiki.read', { path: 'other.about' }, 'acme-token')
+      const write = await rpc('wiki.write', { path: 'acme:x', content: 'x' }, 'acme-token')
+      write.result.node.fullPath.should.equal('acme:x')
+      const denied = await rpc('wiki.read', { path: 'other:about' }, 'acme-token')
       denied.error.data.code.should.equal('UNAUTHORIZED')
     })
   })
@@ -107,32 +107,32 @@ describe('wiki-api', () => {
   describe('wiki.write / wiki.read', () => {
     it('creates a wiki from a one-segment set and resolves full paths', async () => {
       const { rpc } = await createTestApi()
-      const created = await rpc('wiki.write', { path: 'acme', content: 'This is the acme wiki' })
+      const created = await rpc('wiki.write', { path: 'acme:', content: 'This is the acme wiki' })
       created.result.created.should.be.true()
-      created.result.node.fullPath.should.equal('acme')
+      created.result.node.fullPath.should.equal('acme:')
       created.result.node.id.should.equal(created.result.node.wikiId)
 
-      await rpc('wiki.write', { path: 'acme.about.foo', content: 'This is all about foo' })
-      const got = await rpc('wiki.read', { path: 'acme.about.foo' })
+      await rpc('wiki.write', { path: 'acme:about.foo', content: 'This is all about foo' })
+      const got = await rpc('wiki.read', { path: 'acme:about.foo' })
       got.result.content.should.equal('This is all about foo')
-      got.result.fullPath.should.equal('acme.about.foo')
+      got.result.fullPath.should.equal('acme:about.foo')
       got.result.path.should.equal('about.foo')
     })
 
     it('creates the wiki automatically from a nested write', async () => {
       const { rpc } = await createTestApi()
-      const body = await rpc('wiki.write', { path: 'ghost.about.team', content: 'The team' })
+      const body = await rpc('wiki.write', { path: 'ghost:about.team', content: 'The team' })
       body.result.created.should.be.true()
-      body.result.node.fullPath.should.equal('ghost.about.team')
-      const root = await rpc('wiki.read', { path: 'ghost' })
+      body.result.node.fullPath.should.equal('ghost:about.team')
+      const root = await rpc('wiki.read', { path: 'ghost:' })
       root.result.content.should.equal('')
-      const tree = await rpc('wiki.tree', { path: 'ghost' })
-      tree.result.children[0].children[0].fullPath.should.equal('ghost.about.team')
+      const tree = await rpc('wiki.tree', { path: 'ghost:' })
+      tree.result.children[0].children[0].fullPath.should.equal('ghost:about.team')
     })
 
     it('requires wiki:create to bootstrap a wiki from a nested write', async () => {
       const { rpc } = await createTestApi()
-      const denied = await rpc('wiki.write', { path: 'ghost.about', content: 'x' }, 'read-token')
+      const denied = await rpc('wiki.write', { path: 'ghost:about', content: 'x' }, 'read-token')
       denied.error.data.code.should.equal('UNAUTHORIZED')
     })
 
@@ -144,31 +144,31 @@ describe('wiki-api', () => {
 
     it('maps revision conflicts', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme', content: 'root' })
-      await rpc('wiki.write', { path: 'acme.doc', content: 'v1' })
-      const doc = await rpc('wiki.read', { path: 'acme.doc' })
-      await rpc('wiki.write', { path: 'acme.doc', content: 'v2' })
+      await rpc('wiki.write', { path: 'acme:', content: 'root' })
+      await rpc('wiki.write', { path: 'acme:doc', content: 'v1' })
+      const doc = await rpc('wiki.read', { path: 'acme:doc' })
+      await rpc('wiki.write', { path: 'acme:doc', content: 'v2' })
       const conflict = await rpc('wiki.write', {
-        path: 'acme.doc', content: 'v3', ifRevision: doc.result.revisionId
+        path: 'acme:doc', content: 'v3', ifRevision: doc.result.revisionId
       })
       conflict.error.data.code.should.equal('REVISION_CONFLICT')
     })
 
     it('propagates the actor from the token to commits', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme', content: 'root' }, 'agent-token')
-      const node = await rpc('wiki.read', { path: 'acme' })
+      await rpc('wiki.write', { path: 'acme:', content: 'root' }, 'agent-token')
+      const node = await rpc('wiki.read', { path: 'acme:' })
       const commit = await rpc('wiki.getChange', { wiki: 'acme', changeId: node.result.changeId })
       commit.result.actor.should.deepEqual({ type: 'agent', id: 'agent_9', onBehalfOf: 'user_123' })
     })
 
     it('reads a revision with its previous one by id', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme', content: 'root' })
-      const first = await rpc('wiki.write', { path: 'acme.doc', content: 'v1' })
-      const second = await rpc('wiki.write', { path: 'acme.doc', content: 'v2', message: 'again' })
+      await rpc('wiki.write', { path: 'acme:', content: 'root' })
+      const first = await rpc('wiki.write', { path: 'acme:doc', content: 'v1' })
+      const second = await rpc('wiki.write', { path: 'acme:doc', content: 'v2', message: 'again' })
       const revision = await rpc('wiki.getRevision', { wiki: 'acme', revisionId: second.result.node.revisionId })
-      revision.result.fullPath.should.equal('acme.doc')
+      revision.result.fullPath.should.equal('acme:doc')
       revision.result.kind.should.equal('updated')
       revision.result.content.should.equal('v2')
       revision.result.previous.revisionId.should.equal(first.result.node.revisionId)
@@ -180,34 +180,34 @@ describe('wiki-api', () => {
   describe('wiki.edit', () => {
     it('replaces one exact string, and refuses one that is missing or ambiguous', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme', content: 'root' })
-      const first = await rpc('wiki.write', { path: 'acme.plan', content: 'Q3 targets. Q3 hires. Ship it.' })
+      await rpc('wiki.write', { path: 'acme:', content: 'root' })
+      const first = await rpc('wiki.write', { path: 'acme:plan', content: 'Q3 targets. Q3 hires. Ship it.' })
 
-      const ambiguous = await rpc('wiki.edit', { path: 'acme.plan', oldString: 'Q3', newString: 'Q4' })
+      const ambiguous = await rpc('wiki.edit', { path: 'acme:plan', oldString: 'Q3', newString: 'Q4' })
       ambiguous.error.data.code.should.equal('EDIT_MISMATCH')
       ambiguous.error.data.details.occurrences.should.equal(2)
-      const missing = await rpc('wiki.edit', { path: 'acme.plan', oldString: 'Q1', newString: 'Q4' })
+      const missing = await rpc('wiki.edit', { path: 'acme:plan', oldString: 'Q1', newString: 'Q4' })
       missing.error.data.code.should.equal('EDIT_MISMATCH')
 
-      const one = await rpc('wiki.edit', { path: 'acme.plan', oldString: 'Ship it.', newString: 'Shipped.', message: 'done' })
+      const one = await rpc('wiki.edit', { path: 'acme:plan', oldString: 'Ship it.', newString: 'Shipped.', message: 'done' })
       one.result.replaced.should.equal(1)
       one.result.node.content.should.equal('Q3 targets. Q3 hires. Shipped.')
-      const all = await rpc('wiki.edit', { path: 'acme.plan', oldString: 'Q3', newString: 'Q4', replaceAll: true })
+      const all = await rpc('wiki.edit', { path: 'acme:plan', oldString: 'Q3', newString: 'Q4', replaceAll: true })
       all.result.replaced.should.equal(2)
-      ;(await rpc('wiki.read', { path: 'acme.plan' })).result.content.should.equal('Q4 targets. Q4 hires. Shipped.')
+      ;(await rpc('wiki.read', { path: 'acme:plan' })).result.content.should.equal('Q4 targets. Q4 hires. Shipped.')
 
       // guarded like a write: a stale revision is refused
-      const stale = await rpc('wiki.edit', { path: 'acme.plan', oldString: 'Shipped.', newString: 'Done.', ifRevision: first.result.node.revisionId })
+      const stale = await rpc('wiki.edit', { path: 'acme:plan', oldString: 'Shipped.', newString: 'Done.', ifRevision: first.result.node.revisionId })
       stale.error.data.code.should.equal('REVISION_CONFLICT')
-      const history = await rpc('wiki.history', { path: 'acme.plan' })
+      const history = await rpc('wiki.history', { path: 'acme:plan' })
       history.result.length.should.equal(3)
       history.result[1].change.message.should.equal('done')
     })
 
     it('needs the write grant', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.plan', content: 'text' })
-      const denied = await rpc('wiki.edit', { path: 'acme.plan', oldString: 'text', newString: 'more' }, 'read-token')
+      await rpc('wiki.write', { path: 'acme:plan', content: 'text' })
+      const denied = await rpc('wiki.edit', { path: 'acme:plan', oldString: 'text', newString: 'more' }, 'read-token')
       denied.error.data.code.should.equal('UNAUTHORIZED')
     })
   })
@@ -215,63 +215,63 @@ describe('wiki-api', () => {
   describe('pages and records keep their own verbs', () => {
     it('points a call meant for the other family to the method that takes it', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.tasks', content: 'Tasks.', metadata: { key: 'id' } })
-      const pageWrite = await rpc('wiki.set', { path: 'acme.tasks', content: 'x', value: {} })
+      await rpc('wiki.write', { path: 'acme:tasks', content: 'Tasks.', metadata: { key: 'id' } })
+      const pageWrite = await rpc('wiki.set', { path: 'acme:tasks', content: 'x', value: {} })
       pageWrite.error.message.should.match(/pages are written with wiki\.write/)
-      const pageRead = await rpc('wiki.get', { path: 'acme.tasks' })
+      const pageRead = await rpc('wiki.get', { path: 'acme:tasks' })
       pageRead.error.message.should.match(/pages are read with wiki\.read/)
-      const recordRead = await rpc('wiki.read', { path: 'acme.tasks', key: 't1' })
+      const recordRead = await rpc('wiki.read', { path: 'acme:tasks', key: 't1' })
       recordRead.error.message.should.match(/records are read with wiki\.get/)
-      const oneOfMany = await rpc('wiki.records', { path: 'acme.tasks', key: 't1' })
+      const oneOfMany = await rpc('wiki.records', { path: 'acme:tasks', key: 't1' })
       oneOfMany.error.message.should.match(/wiki\.get/)
     })
 
     it('reads one record with wiki.get, and a row\'s history with wiki.history and its key', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.tasks', content: 'Tasks.', metadata: { key: 'id' } })
-      await rpc('wiki.set', { path: 'acme.tasks', value: { id: 't1', status: 'open' } })
-      await rpc('wiki.set', { path: 'acme.tasks', value: { id: 't1', status: 'done' } })
-      const row = await rpc('wiki.get', { path: 'acme.tasks', key: 't1' })
+      await rpc('wiki.write', { path: 'acme:tasks', content: 'Tasks.', metadata: { key: 'id' } })
+      await rpc('wiki.set', { path: 'acme:tasks', value: { id: 't1', status: 'open' } })
+      await rpc('wiki.set', { path: 'acme:tasks', value: { id: 't1', status: 'done' } })
+      const row = await rpc('wiki.get', { path: 'acme:tasks', key: 't1' })
       row.result.record.status.should.equal('done')
-      const history = await rpc('wiki.history', { path: 'acme.tasks', key: 't1' })
+      const history = await rpc('wiki.history', { path: 'acme:tasks', key: 't1' })
       history.result.versions.map((version) => version.status).should.deepEqual(['done', 'open'])
-      const pageCursor = await rpc('wiki.history', { path: 'acme.tasks', cursor: 'x' })
+      const pageCursor = await rpc('wiki.history', { path: 'acme:tasks', cursor: 'x' })
       pageCursor.error.data.code.should.equal('VALIDATION_ERROR')
     })
   })
 
   describe('wiki.tree / wiki.search / wiki.history', () => {
     async function seed (rpc) {
-      await rpc('wiki.write', { path: 'acme', content: 'This is the acme wiki' })
-      await rpc('wiki.write', { path: 'acme.about', content: 'This is an about section' })
-      await rpc('wiki.write', { path: 'acme.about.foo', content: 'This is all about foo' })
-      await rpc('wiki.write', { path: 'acme.about.bar', content: 'This is all about bar' })
+      await rpc('wiki.write', { path: 'acme:', content: 'This is the acme wiki' })
+      await rpc('wiki.write', { path: 'acme:about', content: 'This is an about section' })
+      await rpc('wiki.write', { path: 'acme:about.foo', content: 'This is all about foo' })
+      await rpc('wiki.write', { path: 'acme:about.bar', content: 'This is all about bar' })
     }
 
     it('returns a tree with full paths', async () => {
       const { rpc } = await createTestApi()
       await seed(rpc)
-      const tree = await rpc('wiki.tree', { path: 'acme' })
-      tree.result.fullPath.should.equal('acme')
-      tree.result.children[0].fullPath.should.equal('acme.about')
+      const tree = await rpc('wiki.tree', { path: 'acme:' })
+      tree.result.fullPath.should.equal('acme:')
+      tree.result.children[0].fullPath.should.equal('acme:about')
       tree.result.children[0].children.map((child) => child.fullPath)
-        .should.deepEqual(['acme.about.bar', 'acme.about.foo'])
+        .should.deepEqual(['acme:about.bar', 'acme:about.foo'])
     })
 
     it('searches with full paths and excerpts', async () => {
       const { rpc } = await createTestApi()
       await seed(rpc)
-      const found = await rpc('wiki.search', { path: 'acme', query: 'foo' })
+      const found = await rpc('wiki.search', { path: 'acme:', query: 'foo' })
       found.result.length.should.equal(1)
-      found.result[0].fullPath.should.equal('acme.about.foo')
+      found.result[0].fullPath.should.equal('acme:about.foo')
       found.result[0].excerpt.should.containEql('[foo]')
     })
 
     it('returns history', async () => {
       const { rpc } = await createTestApi()
       await seed(rpc)
-      await rpc('wiki.write', { path: 'acme.about.foo', content: 'v2', message: 'edit' })
-      const history = await rpc('wiki.history', { path: 'acme.about.foo' })
+      await rpc('wiki.write', { path: 'acme:about.foo', content: 'v2', message: 'edit' })
+      const history = await rpc('wiki.history', { path: 'acme:about.foo' })
       history.result.length.should.equal(2)
       history.result[0].change.message.should.equal('edit')
     })
@@ -279,14 +279,14 @@ describe('wiki-api', () => {
     it('returns the change log with full paths, scoped to a subtree', async () => {
       const { rpc } = await createTestApi()
       await seed(rpc)
-      await rpc('wiki.write', { path: 'acme.about.foo', content: 'v2', message: 'edit' })
-      const log = await rpc('wiki.changes', { path: 'acme' })
+      await rpc('wiki.write', { path: 'acme:about.foo', content: 'v2', message: 'edit' })
+      const log = await rpc('wiki.changes', { path: 'acme:' })
       log.result.length.should.equal(5)
       log.result[0].message.should.equal('edit')
       log.result[0].pages.map((change) => [change.kind, change.fullPath])
-        .should.deepEqual([['updated', 'acme.about.foo']])
-      log.result[4].pages[0].fullPath.should.equal('acme')
-      const scoped = await rpc('wiki.changes', { path: 'acme.about.bar' })
+        .should.deepEqual([['updated', 'acme:about.foo']])
+      log.result[4].pages[0].fullPath.should.equal('acme:')
+      const scoped = await rpc('wiki.changes', { path: 'acme:about.bar' })
       scoped.result.length.should.equal(1)
       scoped.result[0].pages[0].kind.should.equal('created')
     })
@@ -295,62 +295,62 @@ describe('wiki-api', () => {
   describe('wiki.move / wiki.remove', () => {
     it('moves nodes and rejects cross-wiki moves', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme', content: 'root' })
-      await rpc('wiki.write', { path: 'other', content: 'other root' })
-      await rpc('wiki.write', { path: 'acme.a.b', content: 'b' })
-      const moved = await rpc('wiki.move', { from: 'acme.a.b', to: 'acme.b' })
-      moved.result.fullPath.should.equal('acme.b')
-      const cross = await rpc('wiki.move', { from: 'acme.b', to: 'other.b' })
+      await rpc('wiki.write', { path: 'acme:', content: 'root' })
+      await rpc('wiki.write', { path: 'other:', content: 'other root' })
+      await rpc('wiki.write', { path: 'acme:a.b', content: 'b' })
+      const moved = await rpc('wiki.move', { from: 'acme:a.b', to: 'acme:b' })
+      moved.result.fullPath.should.equal('acme:b')
+      const cross = await rpc('wiki.move', { from: 'acme:b', to: 'other:b' })
       cross.error.data.code.should.equal('CROSS_WIKI_MOVE')
     })
 
     it('removes nodes and maps non-empty errors', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme', content: 'root' })
-      await rpc('wiki.write', { path: 'acme.a.b', content: 'b' })
-      const nonEmpty = await rpc('wiki.remove', { path: 'acme.a' })
+      await rpc('wiki.write', { path: 'acme:', content: 'root' })
+      await rpc('wiki.write', { path: 'acme:a.b', content: 'b' })
+      const nonEmpty = await rpc('wiki.remove', { path: 'acme:a' })
       nonEmpty.error.data.code.should.equal('NON_EMPTY_NODE')
-      const removed = await rpc('wiki.remove', { path: 'acme.a', recursive: true })
-      removed.result.deletedPaths.should.deepEqual(['acme.a', 'acme.a.b'])
+      const removed = await rpc('wiki.remove', { path: 'acme:a', recursive: true })
+      removed.result.deletedPaths.should.deepEqual(['acme:a', 'acme:a.b'])
     })
   })
 
   describe('wiki.addNote / wiki.notes / wiki.resolveNote', () => {
     it('adds, lists, and resolves notes with the session actor', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.doc', content: 'v1' })
+      await rpc('wiki.write', { path: 'acme:doc', content: 'v1' })
 
-      const added = await rpc('wiki.addNote', { path: 'acme.doc', body: 'Needs a diagram.' }, 'agent-token')
+      const added = await rpc('wiki.addNote', { path: 'acme:doc', body: 'Needs a diagram.' }, 'agent-token')
       added.result.author.should.deepEqual({ type: 'agent', id: 'agent_9', onBehalfOf: 'user_123' })
-      added.result.fullPath.should.equal('acme.doc')
+      added.result.fullPath.should.equal('acme:doc')
 
-      const listed = await rpc('wiki.notes', { path: 'acme.doc' }, 'read-token')
+      const listed = await rpc('wiki.notes', { path: 'acme:doc' }, 'read-token')
       listed.result.length.should.equal(1)
 
-      const resolved = await rpc('wiki.resolveNote', { path: 'acme.doc', noteId: added.result.id })
+      const resolved = await rpc('wiki.resolveNote', { path: 'acme:doc', noteId: added.result.id })
       resolved.result.resolvedBy.should.deepEqual({ type: 'human', id: 'user_123' })
 
-      const open = await rpc('wiki.notes', { path: 'acme.doc' })
+      const open = await rpc('wiki.notes', { path: 'acme:doc' })
       open.result.length.should.equal(0)
-      const all = await rpc('wiki.notes', { path: 'acme.doc', includeResolved: true })
+      const all = await rpc('wiki.notes', { path: 'acme:doc', includeResolved: true })
       all.result.length.should.equal(1)
     })
 
     it('lists a subtree queue with per-note full paths', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.docs.a', content: 'a' })
-      await rpc('wiki.write', { path: 'acme.docs.b', content: 'b' })
-      await rpc('wiki.addNote', { path: 'acme.docs.a', body: 'note a' })
-      await rpc('wiki.addNote', { path: 'acme.docs.b', body: 'note b' })
+      await rpc('wiki.write', { path: 'acme:docs.a', content: 'a' })
+      await rpc('wiki.write', { path: 'acme:docs.b', content: 'b' })
+      await rpc('wiki.addNote', { path: 'acme:docs.a', body: 'note a' })
+      await rpc('wiki.addNote', { path: 'acme:docs.b', body: 'note b' })
 
-      const queue = await rpc('wiki.notes', { path: 'acme', subtree: true })
-      queue.result.map((note) => note.fullPath).should.deepEqual(['acme.docs.a', 'acme.docs.b'])
+      const queue = await rpc('wiki.notes', { path: 'acme:', subtree: true })
+      queue.result.map((note) => note.fullPath).should.deepEqual(['acme:docs.a', 'acme:docs.b'])
     })
 
     it('requires write access to add or resolve', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.doc', content: 'v1' })
-      const denied = await rpc('wiki.addNote', { path: 'acme.doc', body: 'x' }, 'read-token')
+      await rpc('wiki.write', { path: 'acme:doc', content: 'v1' })
+      const denied = await rpc('wiki.addNote', { path: 'acme:doc', body: 'x' }, 'read-token')
       denied.error.data.code.should.equal('UNAUTHORIZED')
     })
   })
@@ -358,142 +358,142 @@ describe('wiki-api', () => {
   describe('wiki.set / wiki.get / wiki.del / wiki.records / wiki.updateMeta', () => {
     it('puts records and reads them back with full paths', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.usage', content: 'API usage.' })
+      await rpc('wiki.write', { path: 'acme:usage', content: 'API usage.' })
 
       const put = await rpc('wiki.set', {
-        path: 'acme.usage', value: { requests: 1042 }
+        path: 'acme:usage', value: { requests: 1042 }
       }, 'agent-token')
-      put.result.fullPath.should.equal('acme.usage')
+      put.result.fullPath.should.equal('acme:usage')
       put.result.record.requests.should.equal(1042)
       put.result.record._actor.should.deepEqual({ type: 'agent', id: 'agent_9', onBehalfOf: 'user_123' })
 
-      const read = await rpc('wiki.records', { path: 'acme.usage', latest: true }, 'read-token')
-      read.result.fullPath.should.equal('acme.usage')
+      const read = await rpc('wiki.records', { path: 'acme:usage', latest: true }, 'read-token')
+      read.result.fullPath.should.equal('acme:usage')
       read.result.records.length.should.equal(1)
       read.result.records[0].requests.should.equal(1042)
     })
 
     it('scopes a set-only token to setting records', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.usage', content: 'API usage.' })
+      await rpc('wiki.write', { path: 'acme:usage', content: 'API usage.' })
 
-      const put = await rpc('wiki.set', { path: 'acme.usage', value: { n: 1 } }, 'set-token')
+      const put = await rpc('wiki.set', { path: 'acme:usage', value: { n: 1 } }, 'set-token')
       put.result.record.n.should.equal(1)
-      const write = await rpc('wiki.write', { path: 'acme.usage', content: 'x' }, 'set-token')
+      const write = await rpc('wiki.write', { path: 'acme:usage', content: 'x' }, 'set-token')
       write.error.data.code.should.equal('UNAUTHORIZED')
-      const read = await rpc('wiki.records', { path: 'acme.usage' }, 'set-token')
+      const read = await rpc('wiki.records', { path: 'acme:usage' }, 'set-token')
       read.error.data.code.should.equal('UNAUTHORIZED')
-      const del = await rpc('wiki.del', { path: 'acme.usage', key: 'x' }, 'set-token')
+      const del = await rpc('wiki.del', { path: 'acme:usage', key: 'x' }, 'set-token')
       del.error.data.code.should.equal('UNAUTHORIZED')
     })
 
     it('keeps writing pages and setting records distinct actions', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.usage', content: 'API usage.' })
-      const denied = await rpc('wiki.set', { path: 'acme.usage', value: { n: 1 } }, 'read-token')
+      await rpc('wiki.write', { path: 'acme:usage', content: 'API usage.' })
+      const denied = await rpc('wiki.set', { path: 'acme:usage', value: { n: 1 } }, 'read-token')
       denied.error.data.code.should.equal('UNAUTHORIZED')
     })
 
     it('deletes records with the write grant and returns them', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.tasks', content: 'Tasks.' })
-      await rpc('wiki.updateMeta', { path: 'acme.tasks', metadata: { key: 'id' } })
-      await rpc('wiki.set', { path: 'acme.tasks', value: { id: 't-1', status: 'todo' } }, 'agent-token')
-      const del = await rpc('wiki.del', { path: 'acme.tasks', key: 't-1' })
+      await rpc('wiki.write', { path: 'acme:tasks', content: 'Tasks.' })
+      await rpc('wiki.updateMeta', { path: 'acme:tasks', metadata: { key: 'id' } })
+      await rpc('wiki.set', { path: 'acme:tasks', value: { id: 't-1', status: 'todo' } }, 'agent-token')
+      const del = await rpc('wiki.del', { path: 'acme:tasks', key: 't-1' })
       del.result.record.status.should.equal('todo')
-      const missing = await rpc('wiki.del', { path: 'acme.tasks', key: 't-1' })
+      const missing = await rpc('wiki.del', { path: 'acme:tasks', key: 't-1' })
       missing.error.data.code.should.equal('NOT_FOUND')
     })
 
     it('maps validation, conflict, and not-found errors', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.usage', content: 'API usage.' })
-      const missing = await rpc('wiki.set', { path: 'acme.nope', value: { n: 1 } })
+      await rpc('wiki.write', { path: 'acme:usage', content: 'API usage.' })
+      const missing = await rpc('wiki.set', { path: 'acme:nope', value: { n: 1 } })
       missing.error.data.code.should.equal('NOT_FOUND')
-      const invalid = await rpc('wiki.records', { path: 'acme.usage', latest: true, limit: 5 })
+      const invalid = await rpc('wiki.records', { path: 'acme:usage', latest: true, limit: 5 })
       invalid.error.data.code.should.equal('VALIDATION_ERROR')
-      await rpc('wiki.write', { path: 'acme.tasks', content: 'Tasks.' })
-      await rpc('wiki.updateMeta', { path: 'acme.tasks', metadata: { key: 'id' } })
-      await rpc('wiki.set', { path: 'acme.tasks', value: { id: 't-1' } })
-      const conflict = await rpc('wiki.set', { path: 'acme.tasks', value: { id: 't-1' }, ifVersion: 9 })
+      await rpc('wiki.write', { path: 'acme:tasks', content: 'Tasks.' })
+      await rpc('wiki.updateMeta', { path: 'acme:tasks', metadata: { key: 'id' } })
+      await rpc('wiki.set', { path: 'acme:tasks', value: { id: 't-1' } })
+      const conflict = await rpc('wiki.set', { path: 'acme:tasks', value: { id: 't-1' }, ifVersion: 9 })
       conflict.error.data.code.should.equal('REVISION_CONFLICT')
     })
 
     it('reads a table record’s versions, one version with the one before, and the table at a moment', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.tasks', content: 'Tasks.', metadata: { key: 'id' } })
-      await rpc('wiki.set', { path: 'acme.tasks', value: { id: 't-1', status: 'todo' } }, 'agent-token')
+      await rpc('wiki.write', { path: 'acme:tasks', content: 'Tasks.', metadata: { key: 'id' } })
+      await rpc('wiki.set', { path: 'acme:tasks', value: { id: 't-1', status: 'todo' } }, 'agent-token')
       const between = new Date().toISOString()
       await new Promise((resolve) => setTimeout(resolve, 5))
-      await rpc('wiki.set', { path: 'acme.tasks', value: { id: 't-1', status: 'done' } }, 'agent-token')
+      await rpc('wiki.set', { path: 'acme:tasks', value: { id: 't-1', status: 'done' } }, 'agent-token')
 
-      const versions = await rpc('wiki.history', { path: 'acme.tasks', key: 't-1' }, 'read-token')
-      versions.result.fullPath.should.equal('acme.tasks')
+      const versions = await rpc('wiki.history', { path: 'acme:tasks', key: 't-1' }, 'read-token')
+      versions.result.fullPath.should.equal('acme:tasks')
       versions.result.key.should.equal('t-1')
       versions.result.versions.map((version) => [version._v, version._change, version.status])
         .should.deepEqual([[2, 'updated', 'done'], [1, 'created', 'todo']])
 
-      const version = await rpc('wiki.getVersion', { path: 'acme.tasks', key: 't-1', version: 2 }, 'read-token')
+      const version = await rpc('wiki.getVersion', { path: 'acme:tasks', key: 't-1', version: 2 }, 'read-token')
       version.result.version.status.should.equal('done')
       version.result.previous.status.should.equal('todo')
 
-      const then = await rpc('wiki.records', { path: 'acme.tasks', at: between }, 'read-token')
+      const then = await rpc('wiki.records', { path: 'acme:tasks', at: between }, 'read-token')
       then.result.records.map((record) => record.status).should.deepEqual(['todo'])
       then.result.unknown.should.deepEqual([])
 
-      const missing = await rpc('wiki.history', { path: 'acme.tasks', key: 'nope' })
+      const missing = await rpc('wiki.history', { path: 'acme:tasks', key: 'nope' })
       missing.error.data.code.should.equal('NOT_FOUND')
-      const unversioned = await rpc('wiki.getVersion', { path: 'acme.tasks', key: 't-1' })
+      const unversioned = await rpc('wiki.getVersion', { path: 'acme:tasks', key: 't-1' })
       unversioned.error.data.details.param.should.equal('version')
     })
 
     it('says what links to a page or a record, and finds records by search', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.people', content: 'People.', metadata: { key: 'id' } })
-      await rpc('wiki.write', { path: 'acme.deals', content: 'Deals.', metadata: { key: 'id' } })
-      await rpc('wiki.write', { path: 'acme.about', content: 'Ask [[people/jo|Jo]] about [[deals]].' })
-      await rpc('wiki.set', { path: 'acme.people', value: { id: 'jo', name: 'Jo Smith', content: 'Champion at Globex.' } })
-      await rpc('wiki.set', { path: 'acme.deals', value: { id: 'd-1', person: '[[people/jo]]' } })
+      await rpc('wiki.write', { path: 'acme:people', content: 'People.', metadata: { key: 'id' } })
+      await rpc('wiki.write', { path: 'acme:deals', content: 'Deals.', metadata: { key: 'id' } })
+      await rpc('wiki.write', { path: 'acme:about', content: 'Ask [[people/jo|Jo]] about [[deals]].' })
+      await rpc('wiki.set', { path: 'acme:people', value: { id: 'jo', name: 'Jo Smith', content: 'Champion at Globex.' } })
+      await rpc('wiki.set', { path: 'acme:deals', value: { id: 'd-1', person: '[[people/jo]]' } })
 
-      const links = await rpc('wiki.links', { path: 'acme.people', key: 'jo' }, 'read-token')
+      const links = await rpc('wiki.links', { path: 'acme:people', key: 'jo' }, 'read-token')
       links.result.key.should.equal('jo')
       links.result.links.map((link) => [link.fullPath, link.key]).should.deepEqual([
-        ['acme.about', null],
-        ['acme.deals', 'd-1']
+        ['acme:about', null],
+        ['acme:deals', 'd-1']
       ])
       links.result.links[1].record.person.should.equal('[[people/jo]]')
-      const toPage = await rpc('wiki.links', { path: 'acme.deals' }, 'read-token')
-      toPage.result.links.map((link) => link.fullPath).should.deepEqual(['acme.about'])
+      const toPage = await rpc('wiki.links', { path: 'acme:deals' }, 'read-token')
+      toPage.result.links.map((link) => link.fullPath).should.deepEqual(['acme:about'])
 
-      const hits = await rpc('wiki.search', { path: 'acme', query: 'Globex' }, 'read-token')
+      const hits = await rpc('wiki.search', { path: 'acme:', query: 'Globex' }, 'read-token')
       hits.result.map((hit) => [hit.kind, hit.fullPath, hit.key, hit.title])
-        .should.deepEqual([['record', 'acme.people', 'jo', 'Jo Smith']])
+        .should.deepEqual([['record', 'acme:people', 'jo', 'Jo Smith']])
     })
 
     it('shows a backlink from another wiki only to whoever may read that wiki', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.people', content: 'People.' })
-      await rpc('wiki.write', { path: 'labs', content: 'Labs.' })
-      await rpc('wiki.write', { path: 'labs.notes', content: 'Ask [[acme:people|the people]].' })
-      await rpc('wiki.write', { path: 'acme.about', content: 'See [[people]].' })
+      await rpc('wiki.write', { path: 'acme:people', content: 'People.' })
+      await rpc('wiki.write', { path: 'labs:', content: 'Labs.' })
+      await rpc('wiki.write', { path: 'labs:notes', content: 'Ask [[acme:people|the people]].' })
+      await rpc('wiki.write', { path: 'acme:about', content: 'See [[people]].' })
 
-      const all = await rpc('wiki.links', { path: 'acme.people' }, 'read-token')
+      const all = await rpc('wiki.links', { path: 'acme:people' }, 'read-token')
       all.result.links.map((link) => [link.wiki, link.fullPath]).should.deepEqual([
-        ['acme', 'acme.about'],
-        ['labs', 'labs.notes']
+        ['acme', 'acme:about'],
+        ['labs', 'labs:notes']
       ])
-      const acmeOnly = await rpc('wiki.links', { path: 'acme.people' }, 'acme-token')
-      acmeOnly.result.links.map((link) => link.fullPath).should.deepEqual(['acme.about'])
+      const acmeOnly = await rpc('wiki.links', { path: 'acme:people' }, 'acme-token')
+      acmeOnly.result.links.map((link) => link.fullPath).should.deepEqual(['acme:about'])
     })
 
     it('answers a write with the links that resolve to nothing, telling nothing of wikis the writer cannot read', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.crm.people', content: 'People.', metadata: { key: 'id' } })
-      await rpc('wiki.write', { path: 'labs', content: 'Labs.' })
-      await rpc('wiki.write', { path: 'labs.plan', content: 'Plan.' })
+      await rpc('wiki.write', { path: 'acme:crm.people', content: 'People.', metadata: { key: 'id' } })
+      await rpc('wiki.write', { path: 'labs:', content: 'Labs.' })
+      await rpc('wiki.write', { path: 'labs:plan', content: 'Plan.' })
 
       const content = '[[crm.people]] [[people]] [[crm.people/ghost]] [[labs:plan]] [[labs:nope]] [[nowhere:x]] `[[not.a.link]]`'
-      const written = await rpc('wiki.write', { path: 'acme.crm.notes', content })
+      const written = await rpc('wiki.write', { path: 'acme:crm.notes', content })
       written.result.problems.map(({ link, reason, message }) => [link, reason, message]).should.deepEqual([
         ['people', 'no-page', 'no page people in this wiki; did you mean [[crm.people]]?'],
         ['crm.people/ghost', 'no-record', 'no record ghost in crm.people'],
@@ -503,7 +503,7 @@ describe('wiki-api', () => {
       written.result.problems[0].suggestion.should.equal('crm.people')
 
       // A writer who cannot read labs learns nothing of what it holds.
-      const guest = await rpc('wiki.edit', { path: 'acme.crm.notes', oldString: '[[people]]', newString: '[[crm.people]]' }, 'acme-token')
+      const guest = await rpc('wiki.edit', { path: 'acme:crm.notes', oldString: '[[people]]', newString: '[[crm.people]]' }, 'acme-token')
       guest.result.problems.map(({ link, reason }) => [link, reason]).should.deepEqual([
         ['crm.people/ghost', 'no-record'],
         ['labs:plan', 'no-wiki'],
@@ -511,76 +511,76 @@ describe('wiki-api', () => {
         ['nowhere:x', 'no-wiki']
       ])
 
-      const set = await rpc('wiki.set', { path: 'acme.crm.people', value: { id: 'jo', see: '[[crm.gone]]' } })
+      const set = await rpc('wiki.set', { path: 'acme:crm.people', value: { id: 'jo', see: '[[crm.gone]]' } })
       set.result.problems.map((problem) => problem.link).should.deepEqual(['crm.gone'])
     })
 
     it('answers a move and a removal with the links they left pointing at nothing', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.crm', content: 'CRM.' })
-      await rpc('wiki.write', { path: 'acme.about', content: 'See [[crm]].' })
-      await rpc('wiki.write', { path: 'labs', content: 'Labs.' })
-      await rpc('wiki.write', { path: 'labs.notes', content: 'See [[acme:crm]].' })
+      await rpc('wiki.write', { path: 'acme:crm', content: 'CRM.' })
+      await rpc('wiki.write', { path: 'acme:about', content: 'See [[crm]].' })
+      await rpc('wiki.write', { path: 'labs:', content: 'Labs.' })
+      await rpc('wiki.write', { path: 'labs:notes', content: 'See [[acme:crm]].' })
 
-      const moved = await rpc('wiki.move', { from: 'acme.crm', to: 'acme.sales' })
-      moved.result.fullPath.should.equal('acme.sales')
+      const moved = await rpc('wiki.move', { from: 'acme:crm', to: 'acme:sales' })
+      moved.result.fullPath.should.equal('acme:sales')
       moved.result.brokenLinks.total.should.equal(2)
       moved.result.brokenLinks.links.map((link) => [link.fullPath, link.target.fullPath]).should.deepEqual([
-        ['acme.about', 'acme.crm'],
-        ['labs.notes', 'acme.crm']
+        ['acme:about', 'acme:crm'],
+        ['labs:notes', 'acme:crm']
       ])
       // A mover who cannot read labs is told only of what they can see.
-      await rpc('wiki.move', { from: 'acme.sales', to: 'acme.crm' })
-      const removed = await rpc('wiki.remove', { path: 'acme.crm' }, 'acme-token')
-      removed.result.brokenLinks.links.map((link) => link.fullPath).should.deepEqual(['acme.about'])
+      await rpc('wiki.move', { from: 'acme:sales', to: 'acme:crm' })
+      const removed = await rpc('wiki.remove', { path: 'acme:crm' }, 'acme-token')
+      removed.result.brokenLinks.links.map((link) => link.fullPath).should.deepEqual(['acme:about'])
       removed.result.brokenLinks.total.should.equal(1)
     })
 
     it('checks a wiki for the links it holds that resolve to nothing', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.about', content: 'See [[gone]] and [[about]].' })
-      await rpc('wiki.write', { path: 'acme.about.team', content: 'Also [[gone]].' })
-      await rpc('wiki.write', { path: 'labs', content: 'Labs.' })
-      await rpc('wiki.write', { path: 'labs.plan', content: 'Plan.' })
-      await rpc('wiki.write', { path: 'acme.links', content: '[[labs:plan]] and [[labs:nope]]' })
-      const checked = await rpc('wiki.check', { path: 'acme' }, 'read-token')
+      await rpc('wiki.write', { path: 'acme:about', content: 'See [[gone]] and [[about]].' })
+      await rpc('wiki.write', { path: 'acme:about.team', content: 'Also [[gone]].' })
+      await rpc('wiki.write', { path: 'labs:', content: 'Labs.' })
+      await rpc('wiki.write', { path: 'labs:plan', content: 'Plan.' })
+      await rpc('wiki.write', { path: 'acme:links', content: '[[labs:plan]] and [[labs:nope]]' })
+      const checked = await rpc('wiki.check', { path: 'acme:' }, 'read-token')
       checked.result.problems.map(({ link, sources }) => [link, sources.map((source) => source.fullPath)]).should.deepEqual([
-        ['gone', ['acme.about', 'acme.about.team']],
-        ['labs:nope', ['acme.links']]
+        ['gone', ['acme:about', 'acme:about.team']],
+        ['labs:nope', ['acme:links']]
       ])
       // Checked by someone who cannot read labs, every link into it is a link to no wiki.
-      const guest = await rpc('wiki.check', { path: 'acme.links' }, 'acme-token')
+      const guest = await rpc('wiki.check', { path: 'acme:links' }, 'acme-token')
       guest.result.problems.map(({ link, reason }) => [link, reason]).should.deepEqual([['labs:plan', 'no-wiki'], ['labs:nope', 'no-wiki']])
     })
 
     it('enforces a declared schema on put', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.survey', content: 'Survey.' })
+      await rpc('wiki.write', { path: 'acme:survey', content: 'Survey.' })
       await rpc('wiki.updateMeta', {
-        path: 'acme.survey',
+        path: 'acme:survey',
         metadata: { schema: { type: 'object', required: ['vote'] } }
       })
-      const bad = await rpc('wiki.set', { path: 'acme.survey', value: { nope: 1 } }, 'agent-token')
+      const bad = await rpc('wiki.set', { path: 'acme:survey', value: { nope: 1 } }, 'agent-token')
       bad.error.data.code.should.equal('VALIDATION_ERROR')
-      const good = await rpc('wiki.set', { path: 'acme.survey', value: { vote: 'yes' } }, 'agent-token')
+      const good = await rpc('wiki.set', { path: 'acme:survey', value: { vote: 'yes' } }, 'agent-token')
       good.result.record.vote.should.equal('yes')
     })
 
     it('merges metadata as an authored write', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme.doc', content: 'body', metadata: { type: 'markdown' } })
-      const denied = await rpc('wiki.updateMeta', { path: 'acme.doc', metadata: { key: 'id' } }, 'read-token')
+      await rpc('wiki.write', { path: 'acme:doc', content: 'body', metadata: { type: 'markdown' } })
+      const denied = await rpc('wiki.updateMeta', { path: 'acme:doc', metadata: { key: 'id' } }, 'read-token')
       denied.error.data.code.should.equal('UNAUTHORIZED')
-      const merged = await rpc('wiki.updateMeta', { path: 'acme.doc', metadata: { key: 'id' } })
+      const merged = await rpc('wiki.updateMeta', { path: 'acme:doc', metadata: { key: 'id' } })
       merged.result.changed.should.be.true()
       merged.result.node.metadata.should.deepEqual({ type: 'markdown', key: 'id' })
-      merged.result.node.fullPath.should.equal('acme.doc')
+      merged.result.node.fullPath.should.equal('acme:doc')
     })
 
     it('refuses record operations when the host has no record store', async () => {
       const { rpc } = await createTestApi({ records: false })
-      await rpc('wiki.write', { path: 'acme.usage', content: 'API usage.' })
-      const put = await rpc('wiki.set', { path: 'acme.usage', value: { n: 1 } })
+      await rpc('wiki.write', { path: 'acme:usage', content: 'API usage.' })
+      const put = await rpc('wiki.set', { path: 'acme:usage', value: { n: 1 } })
       put.error.data.code.should.equal('RECORDS_UNAVAILABLE')
     })
   })
@@ -590,31 +590,31 @@ describe('wiki-api', () => {
       const { rpc } = await createTestApi()
       const empty = await rpc('wiki.list', {}, 'read-token')
       empty.result.should.deepEqual([])
-      await rpc('wiki.write', { path: 'acme', content: 'a' })
-      await rpc('wiki.write', { path: 'other', content: 'o' })
+      await rpc('wiki.write', { path: 'acme:', content: 'a' })
+      await rpc('wiki.write', { path: 'other:', content: 'o' })
       const listed = await rpc('wiki.list', {}, 'read-token')
-      listed.result.map((wiki) => wiki.fullPath).should.deepEqual(['acme', 'other'])
+      listed.result.map((wiki) => wiki.fullPath).should.deepEqual(['acme:', 'other:'])
     })
 
     it('shows a wiki-scoped token only its wikis', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme', content: 'a' })
-      await rpc('wiki.write', { path: 'other', content: 'o' })
+      await rpc('wiki.write', { path: 'acme:', content: 'a' })
+      await rpc('wiki.write', { path: 'other:', content: 'o' })
       const listed = await rpc('wiki.list', {}, 'acme-token')
-      listed.result.map((wiki) => wiki.fullPath).should.deepEqual(['acme'])
+      listed.result.map((wiki) => wiki.fullPath).should.deepEqual(['acme:'])
     })
   })
 
   describe('wiki.snapshot', () => {
     it('returns historical snapshots', async () => {
       const { rpc } = await createTestApi()
-      await rpc('wiki.write', { path: 'acme', content: 'root' })
-      const doc = await rpc('wiki.write', { path: 'acme.doc', content: 'v1' })
-      await rpc('wiki.write', { path: 'acme.later', content: 'later' })
+      await rpc('wiki.write', { path: 'acme:', content: 'root' })
+      const doc = await rpc('wiki.write', { path: 'acme:doc', content: 'v1' })
+      await rpc('wiki.write', { path: 'acme:later', content: 'later' })
       const snapshot = await rpc('wiki.snapshot', {
         wiki: 'acme', changeId: doc.result.node.changeId
       })
-      snapshot.result.nodes.map((node) => node.fullPath).should.deepEqual(['acme', 'acme.doc'])
+      snapshot.result.nodes.map((node) => node.fullPath).should.deepEqual(['acme:', 'acme:doc'])
     })
   })
 
@@ -687,15 +687,15 @@ describe('wiki-api', () => {
       const { ValidationError } = await import('../lib/kit/index.js')
       const methods = createWikiMethods({ kit })
       const principal = { actor: { type: 'human', id: 'host_user', onBehalfOf: null } }
-      await methods['wiki.write'](principal, { path: 'declared', content: 'x' })
+      await methods['wiki.write'](principal, { path: 'declared:', content: 'x' })
 
       await methods['wiki.read'](principal, {}).should.be.rejectedWith(ValidationError, { message: 'path is required', details: { param: 'path' } })
-      await methods['wiki.read'](principal, { path: 'declared', changeId: '1' }).should.be.rejectedWith(ValidationError, { message: 'changeId must be a number', details: { param: 'changeId' } })
-      await methods['wiki.set'](principal, { path: 'declared', value: [1] }).should.be.rejectedWith(ValidationError, { message: 'value must be an object', details: { param: 'value' } })
-      await methods['wiki.records'](principal, { path: 'declared', reverse: 'yes' }).should.be.rejectedWith(ValidationError, { message: 'reverse must be a boolean', details: { param: 'reverse' } })
+      await methods['wiki.read'](principal, { path: 'declared:', changeId: '1' }).should.be.rejectedWith(ValidationError, { message: 'changeId must be a number', details: { param: 'changeId' } })
+      await methods['wiki.set'](principal, { path: 'declared:', value: [1] }).should.be.rejectedWith(ValidationError, { message: 'value must be an object', details: { param: 'value' } })
+      await methods['wiki.records'](principal, { path: 'declared:', reverse: 'yes' }).should.be.rejectedWith(ValidationError, { message: 'reverse must be a boolean', details: { param: 'reverse' } })
       await methods['wiki.read'](principal, ['declared']).should.be.rejectedWith(ValidationError, { message: 'params must be an object' })
       // optional params may be null or absent
-      const page = await methods['wiki.read'](principal, { path: 'declared', changeId: null })
+      const page = await methods['wiki.read'](principal, { path: 'declared:', changeId: null })
       page.content.should.equal('x')
     })
 
@@ -714,9 +714,9 @@ describe('wiki-api', () => {
       const { createWikiMethods } = await import('../lib/api/index.js')
       const methods = createWikiMethods({ kit }) // no auth: host guards calls itself
       const principal = { actor: { type: 'human', id: 'host_user', onBehalfOf: null } }
-      const created = await methods['wiki.write'](principal, { path: 'hosted', content: 'via host' })
+      const created = await methods['wiki.write'](principal, { path: 'hosted:', content: 'via host' })
       created.created.should.be.true()
-      const node = await methods['wiki.read'](principal, { path: 'hosted' })
+      const node = await methods['wiki.read'](principal, { path: 'hosted:' })
       node.content.should.equal('via host')
       const commit = await methods['wiki.getChange'](principal, { wiki: 'hosted', changeId: node.changeId })
       commit.actor.id.should.equal('host_user')

@@ -58,87 +58,87 @@ describe('wiki-sdk', () => {
   })
 
   it('round-trips the core workflow', async () => {
-    const created = await client.write('acme', { content: 'This is the acme wiki' })
+    const created = await client.write('acme:', { content: 'This is the acme wiki' })
     created.created.should.be.true()
-    await client.write('acme.about.foo', { content: '# Foo', title: 'Foo' })
+    await client.write('acme:about.foo', { content: '# Foo', title: 'Foo' })
 
-    const foo = await client.read('acme.about.foo')
+    const foo = await client.read('acme:about.foo')
     foo.content.should.equal('# Foo')
     foo.title.should.equal('Foo')
-    foo.fullPath.should.equal('acme.about.foo')
+    foo.fullPath.should.equal('acme:about.foo')
 
-    const tree = await client.tree('acme')
-    tree.children[0].fullPath.should.equal('acme.about')
+    const tree = await client.tree('acme:')
+    tree.children[0].fullPath.should.equal('acme:about')
 
-    const results = await client.search('acme', 'foo')
-    results[0].fullPath.should.equal('acme.about.foo')
+    const results = await client.search('acme:', 'foo')
+    results[0].fullPath.should.equal('acme:about.foo')
 
-    const history = await client.history('acme.about.foo')
+    const history = await client.history('acme:about.foo')
     history.length.should.equal(1)
 
-    const log = await client.changes('acme', { limit: 1 })
+    const log = await client.changes('acme:', { limit: 1 })
     log.length.should.equal(1)
-    log[0].pages.map((change) => change.fullPath).should.containEql('acme.about.foo')
+    log[0].pages.map((change) => change.fullPath).should.containEql('acme:about.foo')
 
-    const moved = await client.move('acme.about.foo', 'acme.foo')
-    moved.fullPath.should.equal('acme.foo')
+    const moved = await client.move('acme:about.foo', 'acme:foo')
+    moved.fullPath.should.equal('acme:foo')
 
-    const removed = await client.remove('acme.about')
-    removed.deletedPaths.should.deepEqual(['acme.about'])
+    const removed = await client.remove('acme:about')
+    removed.deletedPaths.should.deepEqual(['acme:about'])
 
     const snapshot = await client.snapshot('acme', { changeId: foo.changeId })
-    snapshot.nodes.map((node) => node.fullPath).should.containEql('acme.about.foo')
+    snapshot.nodes.map((node) => node.fullPath).should.containEql('acme:about.foo')
 
     const commit = await client.getChange('acme', foo.changeId)
     commit.actor.id.should.equal('sdk_test')
 
     const revision = await client.getRevision('acme', moved.revisionId)
     revision.kind.should.equal('moved')
-    revision.fullPath.should.equal('acme.foo')
+    revision.fullPath.should.equal('acme:foo')
 
     const wikis = await client.list()
     wikis.map((wiki) => wiki.slug).should.deepEqual(['acme'])
 
-    const note = await client.addNote('acme.foo', 'needs work')
-    const notes = await client.notes('acme.foo')
+    const note = await client.addNote('acme:foo', 'needs work')
+    const notes = await client.notes('acme:foo')
     notes.map((entry) => entry.body).should.deepEqual(['needs work'])
-    const done = await client.resolveNote('acme.foo', note.id)
+    const done = await client.resolveNote('acme:foo', note.id)
     done.resolvedBy.id.should.equal('sdk_test')
-    ;(await client.notes('acme.foo')).length.should.equal(0)
+    ;(await client.notes('acme:foo')).length.should.equal(0)
 
-    const put = await client.set('acme.foo', { requests: 7 }, { ts: '2026-01-01T00:00:00Z' })
-    put.fullPath.should.equal('acme.foo')
-    await client.set('acme.foo', { requests: 9 })
-    const data = await client.records('acme.foo', { since: '2026-01-01T00:00:00Z' })
+    const put = await client.set('acme:foo', { requests: 7 }, { ts: '2026-01-01T00:00:00Z' })
+    put.fullPath.should.equal('acme:foo')
+    await client.set('acme:foo', { requests: 9 })
+    const data = await client.records('acme:foo', { since: '2026-01-01T00:00:00Z' })
     data.records.map((record) => record.requests).should.deepEqual([7, 9])
-    const latest = await client.records('acme.foo', { latest: true })
+    const latest = await client.records('acme:foo', { latest: true })
     latest.records[0].requests.should.equal(9)
-    const deleted = await client.del('acme.foo', latest.records[0]._id)
+    const deleted = await client.del('acme:foo', latest.records[0]._id)
     deleted.record.requests.should.equal(9)
 
-    const meta = await client.updateMeta('acme.foo', { retain: { days: 30 } })
+    const meta = await client.updateMeta('acme:foo', { retain: { days: 30 } })
     meta.changed.should.be.true()
     meta.node.metadata.retain.should.deepEqual({ days: 30 })
   })
 
   it('supports optimistic concurrency through ifRevision', async () => {
-    await client.write('acme', { content: 'root' })
-    const first = await client.write('acme.doc', { content: 'v1' })
-    await client.write('acme.doc', {
+    await client.write('acme:', { content: 'root' })
+    const first = await client.write('acme:doc', { content: 'v1' })
+    await client.write('acme:doc', {
       content: 'v2', ifRevision: first.node.revisionId
     })
-    await client.write('acme.doc', { content: 'v3', ifRevision: first.node.revisionId })
+    await client.write('acme:doc', { content: 'v3', ifRevision: first.node.revisionId })
       .should.be.rejectedWith(RevisionConflictError)
   })
 
   it('maps API errors to typed classes', async () => {
-    await client.read('acme.missing').should.be.rejectedWith(NotFoundError)
+    await client.read('acme:missing').should.be.rejectedWith(NotFoundError)
     const anonymous = new WikiClient({ baseUrl: server.baseUrl })
     await anonymous.read('acme').should.be.rejectedWith(UnauthenticatedError)
   })
 
   it('exposes rpc protocol failures as RpcError', async () => {
-    const raw = await client.rpc('wiki.read', { path: 'acme' }).catch((error) => error)
+    const raw = await client.rpc('wiki.read', { path: 'acme:' }).catch((error) => error)
     raw.should.be.instanceOf(NotFoundError) // sanity: domain error, not RpcError
     await client.rpc('wiki.nope', {}).should.be.rejectedWith(RpcError)
   })

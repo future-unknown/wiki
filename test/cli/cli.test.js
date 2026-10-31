@@ -21,11 +21,11 @@ describe('wiki CLI (end to end)', () => {
   describe('the canonical workflow', () => {
     it('builds the acme wiki', async () => {
       for (const [target, content] of [
-        ['acme', 'This is the acme wiki'],
-        ['acme.about', 'This is an about section'],
-        ['acme.about.foo', 'This is all about foo'],
-        ['acme.about.bar', 'This is all about bar'],
-        ['acme.about.baz', 'This is all about baz']
+        ['acme:', 'This is the acme wiki'],
+        ['acme:about', 'This is an about section'],
+        ['acme:about.foo', 'This is all about foo'],
+        ['acme:about.bar', 'This is all about bar'],
+        ['acme:about.baz', 'This is all about baz']
       ]) {
         const result = await wiki(['write', target, content])
         result.code.should.equal(0, result.stderr)
@@ -33,24 +33,24 @@ describe('wiki CLI (end to end)', () => {
     })
 
     it('creates a brand-new wiki from a nested write', async () => {
-      const result = await wiki(['write', 'fresh.docs.intro', 'Welcome to fresh', '--json'])
+      const result = await wiki(['write', 'fresh:docs.intro', 'Welcome to fresh', '--json'])
       result.code.should.equal(0, result.stderr)
       const parsed = JSON.parse(result.stdout)
       parsed.created.should.be.true()
-      parsed.node.fullPath.should.equal('fresh.docs.intro')
-      const tree = await wiki(['tree', 'fresh'])
+      parsed.node.fullPath.should.equal('fresh:docs.intro')
+      const tree = await wiki(['tree', 'fresh:'])
       tree.code.should.equal(0)
       tree.stdout.should.containEql('└── docs')
     })
 
     it('reads raw content on stdout', async () => {
-      const result = await wiki(['read', 'acme.about.foo'])
+      const result = await wiki(['read', 'acme:about.foo'])
       result.code.should.equal(0)
       result.stdout.should.equal('This is all about foo\n')
     })
 
     it('renders a human tree with previews', async () => {
-      const result = await wiki(['tree', 'acme'])
+      const result = await wiki(['tree', 'acme:'])
       result.code.should.equal(0)
       result.stdout.should.containEql('acme')
       result.stdout.should.containEql('└── about')
@@ -60,67 +60,67 @@ describe('wiki CLI (end to end)', () => {
     })
 
     it('searches within the wiki', async () => {
-      const result = await wiki(['search', 'acme', 'foo'])
+      const result = await wiki(['search', 'acme:', 'foo'])
       result.code.should.equal(0)
-      result.stdout.should.containEql('acme.about.foo')
-      const scoped = await wiki(['search', 'acme.about', 'baz', '--json'])
-      JSON.parse(scoped.stdout)[0].fullPath.should.equal('acme.about.baz')
+      result.stdout.should.containEql('acme:about.foo')
+      const scoped = await wiki(['search', 'acme:about', 'baz', '--json'])
+      JSON.parse(scoped.stdout)[0].fullPath.should.equal('acme:about.baz')
     })
 
     it('shows the change log', async () => {
-      const result = await wiki(['changes', 'acme', '--limit', '2'])
+      const result = await wiki(['changes', 'acme:', '--limit', '2'])
       result.code.should.equal(0)
       result.stdout.should.containEql('change')
-      result.stdout.should.containEql('created acme.about.')
-      const scoped = await wiki(['changes', 'acme.about.foo', '--json'])
-      JSON.parse(scoped.stdout).every((entry) => entry.pages.every((change) => change.fullPath === 'acme.about.foo')).should.be.true()
+      result.stdout.should.containEql('created acme:about.')
+      const scoped = await wiki(['changes', 'acme:about.foo', '--json'])
+      JSON.parse(scoped.stdout).every((entry) => entry.pages.every((change) => change.fullPath === 'acme:about.foo')).should.be.true()
     })
 
     it('shows history', async () => {
-      const result = await wiki(['history', 'acme.about.foo'])
+      const result = await wiki(['history', 'acme:about.foo'])
       result.code.should.equal(0)
       result.stdout.should.containEql('change')
       result.stdout.should.containEql('agent:cli_test (for user_test)')
     })
 
     it('shows what a revision changed', async () => {
-      const first = await wiki(['write', 'acme.about.diffy', 'line one\nline two\nline three\n', '--json'])
+      const first = await wiki(['write', 'acme:about.diffy', 'line one\nline two\nline three\n', '--json'])
       first.code.should.equal(0, first.stderr)
       const created = JSON.parse(first.stdout).node
-      const second = await wiki(['write', 'acme.about.diffy', 'line one\nline 2\nline three\n', '--json'])
+      const second = await wiki(['write', 'acme:about.diffy', 'line one\nline 2\nline three\n', '--json'])
       second.code.should.equal(0, second.stderr)
 
       // the latest revision against the one before it, as a unified diff
-      const latest = await wiki(['diff', 'acme.about.diffy'])
+      const latest = await wiki(['diff', 'acme:about.diffy'])
       latest.code.should.equal(0, latest.stderr)
       latest.stdout.should.containEql('updated')
-      latest.stdout.should.containEql(`--- acme.about.diffy@c${created.changeId}`)
+      latest.stdout.should.containEql(`--- acme:about.diffy@c${created.changeId}`)
       latest.stdout.should.containEql('-line two')
       latest.stdout.should.containEql('+line 2')
 
       // an earlier revision by commit: the first one is all additions
-      const earlier = await wiki(['diff', 'acme.about.diffy', '--change', String(created.changeId)])
+      const earlier = await wiki(['diff', 'acme:about.diffy', '--change', String(created.changeId)])
       earlier.code.should.equal(0, earlier.stderr)
       earlier.stdout.should.containEql('created')
       earlier.stdout.should.containEql('--- /dev/null')
       earlier.stdout.should.containEql('+line one')
 
       // by revision id, as data
-      const asJson = await wiki(['diff', 'acme.about.diffy', '--revision', created.revisionId, '--json'])
+      const asJson = await wiki(['diff', 'acme:about.diffy', '--revision', created.revisionId, '--json'])
       asJson.code.should.equal(0, asJson.stderr)
       const revision = JSON.parse(asJson.stdout)
       revision.kind.should.equal('created')
-      revision.fullPath.should.equal('acme.about.diffy')
+      revision.fullPath.should.equal('acme:about.diffy')
       should(revision.previous).be.null()
 
-      const both = await wiki(['diff', 'acme.about.diffy', '--change', '1', '--revision', 'x'])
+      const both = await wiki(['diff', 'acme:about.diffy', '--change', '1', '--revision', 'x'])
       both.code.should.equal(2)
     })
   })
 
   describe('safe agent-edit workflow', () => {
     it('reads with --json, writes with --if-revision, then detects staleness', async () => {
-      const read = await wiki(['read', 'acme.about.foo', '--json'])
+      const read = await wiki(['read', 'acme:about.foo', '--json'])
       read.code.should.equal(0)
       const node = JSON.parse(read.stdout)
       node.should.have.properties(
@@ -129,7 +129,7 @@ describe('wiki CLI (end to end)', () => {
       )
 
       const update = await wiki(
-        ['write', 'acme.about.foo', 'Updated foo docs', '--if-revision', node.revisionId, '--json']
+        ['write', 'acme:about.foo', 'Updated foo docs', '--if-revision', node.revisionId, '--json']
       )
       update.code.should.equal(0, update.stderr)
       const updated = JSON.parse(update.stdout)
@@ -138,21 +138,21 @@ describe('wiki CLI (end to end)', () => {
 
       // a second write using the stale revision must conflict with exit code 4
       const stale = await wiki(
-        ['write', 'acme.about.foo', 'Conflicting edit', '--if-revision', node.revisionId]
+        ['write', 'acme:about.foo', 'Conflicting edit', '--if-revision', node.revisionId]
       )
       stale.code.should.equal(4)
       stale.stderr.should.containEql('wiki:')
 
-      const current = await wiki(['read', 'acme.about.foo'])
+      const current = await wiki(['read', 'acme:about.foo'])
       current.stdout.should.equal('Updated foo docs\n')
     })
   })
 
   describe('write input sources', () => {
     it('accepts stdin', async () => {
-      const result = await wiki(['write', 'acme.stdin-doc'], { stdin: '# From stdin\n\nBody.\n' })
+      const result = await wiki(['write', 'acme:stdin-doc'], { stdin: '# From stdin\n\nBody.\n' })
       result.code.should.equal(0, result.stderr)
-      const read = await wiki(['read', 'acme.stdin-doc'])
+      const read = await wiki(['read', 'acme:stdin-doc'])
       read.stdout.should.equal('# From stdin\n\nBody.\n')
     })
 
@@ -160,9 +160,9 @@ describe('wiki CLI (end to end)', () => {
       const file = path.join(os.tmpdir(), `wiki-test-${process.pid}.md`)
       fs.writeFileSync(file, '# From a file\n')
       try {
-        const result = await wiki(['write', 'acme.file-doc', '--file', file])
+        const result = await wiki(['write', 'acme:file-doc', '--file', file])
         result.code.should.equal(0, result.stderr)
-        const read = await wiki(['read', 'acme.file-doc'])
+        const read = await wiki(['read', 'acme:file-doc'])
         read.stdout.should.equal('# From a file\n')
       } finally {
         fs.unlinkSync(file)
@@ -170,33 +170,33 @@ describe('wiki CLI (end to end)', () => {
     })
 
     it('rejects multiple content sources', async () => {
-      const result = await wiki(['write', 'acme.doc', 'inline', '--file', 'x.md'])
+      const result = await wiki(['write', 'acme:doc', 'inline', '--file', 'x.md'])
       result.code.should.equal(2)
     })
 
     it('supports --title and --metadata', async () => {
       const result = await wiki([
-        'write', 'acme.meta-doc', 'body', '--title', 'Meta Doc', '--metadata', '{"tags":["x"]}'
+        'write', 'acme:meta-doc', 'body', '--title', 'Meta Doc', '--metadata', '{"tags":["x"]}'
       ])
       result.code.should.equal(0, result.stderr)
-      const read = JSON.parse((await wiki(['read', 'acme.meta-doc', '--json'])).stdout)
+      const read = JSON.parse((await wiki(['read', 'acme:meta-doc', '--json'])).stdout)
       read.title.should.equal('Meta Doc')
       read.metadata.should.deepEqual({ tags: ['x'] })
     })
 
     it('rejects invalid --metadata JSON', async () => {
-      const result = await wiki(['write', 'acme.doc', 'x', '--metadata', 'not json'])
+      const result = await wiki(['write', 'acme:doc', 'x', '--metadata', 'not json'])
       result.code.should.equal(2)
     })
   })
 
   describe('historical reads', () => {
     it('reads a page as of an earlier change', async () => {
-      const before = JSON.parse((await wiki(['read', 'acme.about.bar', '--json'])).stdout)
-      await wiki(['write', 'acme.about.bar', 'bar v2'])
-      const past = await wiki(['read', 'acme.about.bar', '--change', String(before.changeId)])
+      const before = JSON.parse((await wiki(['read', 'acme:about.bar', '--json'])).stdout)
+      await wiki(['write', 'acme:about.bar', 'bar v2'])
+      const past = await wiki(['read', 'acme:about.bar', '--change', String(before.changeId)])
       past.stdout.should.equal('This is all about bar\n')
-      const nowRead = await wiki(['read', 'acme.about.bar'])
+      const nowRead = await wiki(['read', 'acme:about.bar'])
       nowRead.stdout.should.equal('bar v2\n')
     })
 
@@ -204,173 +204,173 @@ describe('wiki CLI (end to end)', () => {
       await new Promise((resolve) => setTimeout(resolve, 10))
       const stamp = new Date().toISOString()
       await new Promise((resolve) => setTimeout(resolve, 10))
-      await wiki(['write', 'acme.newest', 'created after the stamp'])
-      const past = await wiki(['tree', 'acme', '--at', stamp])
+      await wiki(['write', 'acme:newest', 'created after the stamp'])
+      const past = await wiki(['tree', 'acme:', '--at', stamp])
       past.code.should.equal(0)
       past.stdout.should.not.containEql('newest')
-      const present = await wiki(['tree', 'acme'])
+      const present = await wiki(['tree', 'acme:'])
       present.stdout.should.containEql('newest')
     })
 
     it('rejects --change with --at', async () => {
-      const result = await wiki(['tree', 'acme', '--change', '1', '--at', new Date().toISOString()])
+      const result = await wiki(['tree', 'acme:', '--change', '1', '--at', new Date().toISOString()])
       result.code.should.equal(2)
     })
   })
 
   describe('move and rm', () => {
     it('moves a subtree preserving identity', async () => {
-      await wiki(['write', 'acme.projects.alpha.notes', 'alpha notes'])
-      const before = JSON.parse((await wiki(['read', 'acme.projects.alpha.notes', '--json'])).stdout)
-      const moved = await wiki(['move', 'acme.projects', 'acme.archive', '--json'])
+      await wiki(['write', 'acme:projects.alpha.notes', 'alpha notes'])
+      const before = JSON.parse((await wiki(['read', 'acme:projects.alpha.notes', '--json'])).stdout)
+      const moved = await wiki(['move', 'acme:projects', 'acme:archive', '--json'])
       moved.code.should.equal(0, moved.stderr)
-      const after = JSON.parse((await wiki(['read', 'acme.archive.alpha.notes', '--json'])).stdout)
+      const after = JSON.parse((await wiki(['read', 'acme:archive.alpha.notes', '--json'])).stdout)
       after.id.should.equal(before.id)
-      const gone = await wiki(['read', 'acme.projects.alpha.notes'])
+      const gone = await wiki(['read', 'acme:projects.alpha.notes'])
       gone.code.should.equal(3)
     })
 
     it('refuses non-empty deletes without --recursive, exit code 4', async () => {
-      const result = await wiki(['rm', 'acme.archive'])
+      const result = await wiki(['rm', 'acme:archive'])
       result.code.should.equal(4)
-      const recursive = await wiki(['rm', 'acme.archive', '--recursive', '--json'])
+      const recursive = await wiki(['rm', 'acme:archive', '--recursive', '--json'])
       recursive.code.should.equal(0, recursive.stderr)
-      JSON.parse(recursive.stdout).deletedPaths.should.containEql('acme.archive.alpha.notes')
+      JSON.parse(recursive.stdout).deletedPaths.should.containEql('acme:archive.alpha.notes')
     })
 
     it('honors --if-change', async () => {
-      await wiki(['write', 'acme.tmp', 'temp'])
-      const result = await wiki(['rm', 'acme.tmp', '--if-change', '1'])
+      await wiki(['write', 'acme:tmp', 'temp'])
+      const result = await wiki(['rm', 'acme:tmp', '--if-change', '1'])
       result.code.should.equal(4)
     })
   })
 
   describe('set, get, del, records, and meta', () => {
     it('sets inline JSON and reads the latest record back', async () => {
-      await wiki(['write', 'acme.usage', 'Daily API usage.'])
-      const put = await wiki(['set', 'acme.usage', '{"requests": 1042}', '--json'])
+      await wiki(['write', 'acme:usage', 'Daily API usage.'])
+      const put = await wiki(['set', 'acme:usage', '{"requests": 1042}', '--json'])
       put.code.should.equal(0, put.stderr)
       JSON.parse(put.stdout).record.requests.should.equal(1042)
 
-      const latest = await wiki(['records', 'acme.usage', '--latest', '--json'])
+      const latest = await wiki(['records', 'acme:usage', '--latest', '--json'])
       latest.code.should.equal(0, latest.stderr)
       const parsed = JSON.parse(latest.stdout)
-      parsed.fullPath.should.equal('acme.usage')
+      parsed.fullPath.should.equal('acme:usage')
       parsed.records.length.should.equal(1)
       parsed.records[0].requests.should.equal(1042)
       parsed.records[0].should.have.properties('_id', '_ts', '_actor', '_v')
     })
 
     it('sets from stdin and renders a human listing', async () => {
-      const result = await wiki(['set', 'acme.usage', '--ts', '2020-01-01T00:00:00Z'],
+      const result = await wiki(['set', 'acme:usage', '--ts', '2020-01-01T00:00:00Z'],
         { stdin: '{"requests": 1}\n' })
       result.code.should.equal(0, result.stderr)
-      result.stderr.should.containEql('set acme.usage')
+      result.stderr.should.containEql('set acme:usage')
 
-      const listed = await wiki(['records', 'acme.usage', '--until', '2020-06-01T00:00:00Z'])
+      const listed = await wiki(['records', 'acme:usage', '--until', '2020-06-01T00:00:00Z'])
       listed.code.should.equal(0)
       listed.stdout.should.containEql('2020-01-01T00:00:00.000Z  {"requests":1}')
     })
 
     it('declares a key with meta, upserts, claims with --if-version, and deletes', async () => {
-      await wiki(['write', 'acme.tasks', 'Task board.'])
-      const meta = await wiki(['meta', 'acme.tasks', '{"key": "id"}'])
+      await wiki(['write', 'acme:tasks', 'Task board.'])
+      const meta = await wiki(['meta', 'acme:tasks', '{"key": "id"}'])
       meta.code.should.equal(0, meta.stderr)
-      meta.stderr.should.containEql('updated acme.tasks')
+      meta.stderr.should.containEql('updated acme:tasks')
 
-      const first = await wiki(['set', 'acme.tasks', '{"id": "t-1", "status": "todo"}', '--json'])
+      const first = await wiki(['set', 'acme:tasks', '{"id": "t-1", "status": "todo"}', '--json'])
       first.code.should.equal(0, first.stderr)
       JSON.parse(first.stdout).record._v.should.equal(1)
 
-      const claim = await wiki(['set', 'acme.tasks', '{"id": "t-1", "status": "claimed"}', '--if-version', '1'])
+      const claim = await wiki(['set', 'acme:tasks', '{"id": "t-1", "status": "claimed"}', '--if-version', '1'])
       claim.code.should.equal(0, claim.stderr)
-      const stale = await wiki(['set', 'acme.tasks', '{"id": "t-1", "status": "claimed"}', '--if-version', '1'])
+      const stale = await wiki(['set', 'acme:tasks', '{"id": "t-1", "status": "claimed"}', '--if-version', '1'])
       stale.code.should.equal(4)
 
-      const byKey = await wiki(['get', 'acme.tasks/t-1', '--json'])
+      const byKey = await wiki(['get', 'acme:tasks/t-1', '--json'])
       byKey.code.should.equal(0, byKey.stderr)
       JSON.parse(byKey.stdout).record.status.should.equal('claimed')
 
-      const del = await wiki(['del', 'acme.tasks/t-1'])
+      const del = await wiki(['del', 'acme:tasks/t-1'])
       del.code.should.equal(0, del.stderr)
-      del.stderr.should.containEql('deleted t-1 from acme.tasks')
-      ;(await wiki(['get', 'acme.tasks/t-1'])).code.should.equal(3)
+      del.stderr.should.containEql('deleted t-1 from acme:tasks')
+      ;(await wiki(['get', 'acme:tasks/t-1'])).code.should.equal(3)
     })
 
     it('enforces a declared schema on set', async () => {
-      await wiki(['write', 'acme.survey', 'Survey.'])
-      await wiki(['meta', 'acme.survey', '{"schema": {"type": "object", "required": ["vote"]}}'])
-      const bad = await wiki(['set', 'acme.survey', '{"nope": 1}'])
+      await wiki(['write', 'acme:survey', 'Survey.'])
+      await wiki(['meta', 'acme:survey', '{"schema": {"type": "object", "required": ["vote"]}}'])
+      const bad = await wiki(['set', 'acme:survey', '{"nope": 1}'])
       bad.code.should.equal(2)
       bad.stderr.should.containEql('schema')
-      ;(await wiki(['set', 'acme.survey', '{"vote": "yes"}'])).code.should.equal(0)
+      ;(await wiki(['set', 'acme:survey', '{"vote": "yes"}'])).code.should.equal(0)
     })
 
     it('rejects invalid records and read-option combinations, exit code 2', async () => {
-      (await wiki(['set', 'acme.usage', 'not json'])).code.should.equal(2)
-      ;(await wiki(['set', 'acme.usage'])).code.should.equal(2)
-      ;(await wiki(['set', 'acme.usage', '"bare string"'])).code.should.equal(2)
-      ;(await wiki(['records', 'acme.usage', '--latest', '--limit', '5'])).code.should.equal(2)
-      ;(await wiki(['meta', 'acme.usage', '[1]'])).code.should.equal(2)
+      (await wiki(['set', 'acme:usage', 'not json'])).code.should.equal(2)
+      ;(await wiki(['set', 'acme:usage'])).code.should.equal(2)
+      ;(await wiki(['set', 'acme:usage', '"bare string"'])).code.should.equal(2)
+      ;(await wiki(['records', 'acme:usage', '--latest', '--limit', '5'])).code.should.equal(2)
+      ;(await wiki(['meta', 'acme:usage', '[1]'])).code.should.equal(2)
     })
 
     it('exits 3 for a missing page or record', async () => {
-      (await wiki(['set', 'acme.nope', '{"n": 1}'])).code.should.equal(3)
-      ;(await wiki(['records', 'acme.nope'])).code.should.equal(3)
-      ;(await wiki(['del', 'acme.usage/no-such-record'])).code.should.equal(3)
+      (await wiki(['set', 'acme:nope', '{"n": 1}'])).code.should.equal(3)
+      ;(await wiki(['records', 'acme:nope'])).code.should.equal(3)
+      ;(await wiki(['del', 'acme:usage/no-such-record'])).code.should.equal(3)
     })
   })
 
   describe('record history, links, and record search', () => {
     it('lists a record’s versions and diffs one, by its address', async () => {
-      ;(await wiki(['write', 'acme.crm', 'CRM'])).code.should.equal(0)
-      ;(await wiki(['write', 'acme.crm.people', 'People', '--metadata', '{"key":"id"}'])).code.should.equal(0)
-      ;(await wiki(['set', 'acme.crm.people', '{"id":"jo","name":"Jo Smith","stage":"met"}'])).code.should.equal(0)
-      ;(await wiki(['set', 'acme.crm.people', '{"id":"jo","name":"Jo Smith","stage":"proposal"}'])).code.should.equal(0)
+      ;(await wiki(['write', 'acme:crm', 'CRM'])).code.should.equal(0)
+      ;(await wiki(['write', 'acme:crm.people', 'People', '--metadata', '{"key":"id"}'])).code.should.equal(0)
+      ;(await wiki(['set', 'acme:crm.people', '{"id":"jo","name":"Jo Smith","stage":"met"}'])).code.should.equal(0)
+      ;(await wiki(['set', 'acme:crm.people', '{"id":"jo","name":"Jo Smith","stage":"proposal"}'])).code.should.equal(0)
 
-      const history = await wiki(['history', 'acme.crm.people/jo'])
+      const history = await wiki(['history', 'acme:crm.people/jo'])
       history.code.should.equal(0, history.stderr)
       history.stdout.split('\n').filter(Boolean).map((line) => line.split('  ')[0])
         .should.deepEqual(['version 2', 'version 1'])
       history.stdout.should.containEql('updated')
 
-      const diff = await wiki(['diff', 'acme.crm.people/jo'])
+      const diff = await wiki(['diff', 'acme:crm.people/jo'])
       diff.code.should.equal(0, diff.stderr)
       diff.stdout.should.containEql('stage: "met" -> "proposal"')
-      ;(await wiki(['set', 'acme.crm.people', '{"id":"jo","name":"Jo Smith","stage":"proposal","content":"Met at the summit.\\n"}'])).code.should.equal(0)
-      const writing = await wiki(['diff', 'acme.crm.people/jo'])
+      ;(await wiki(['set', 'acme:crm.people', '{"id":"jo","name":"Jo Smith","stage":"proposal","content":"Met at the summit.\\n"}'])).code.should.equal(0)
+      const writing = await wiki(['diff', 'acme:crm.people/jo'])
       writing.stdout.should.containEql('+Met at the summit.')
-      writing.stdout.should.containEql('acme.crm.people/jo@v3')
+      writing.stdout.should.containEql('acme:crm.people/jo@v3')
 
-      const first = await wiki(['diff', 'acme.crm.people/jo', '--version', '1', '--json'])
+      const first = await wiki(['diff', 'acme:crm.people/jo', '--version', '1', '--json'])
       should(JSON.parse(first.stdout).previous).be.null()
 
-      const wrong = await wiki(['diff', 'acme.crm.people/jo', '--change', '1'])
+      const wrong = await wiki(['diff', 'acme:crm.people/jo', '--change', '1'])
       wrong.code.should.equal(2)
-      const pageVersion = await wiki(['diff', 'acme.crm.people', '--version', '1'])
+      const pageVersion = await wiki(['diff', 'acme:crm.people', '--version', '1'])
       pageVersion.code.should.equal(2)
     })
 
     it('says what links to a record, and finds it by search', async () => {
-      ;(await wiki(['write', 'acme.crm.deals', 'Deals', '--metadata', '{"key":"id"}'])).code.should.equal(0)
-      ;(await wiki(['set', 'acme.crm.deals', '{"id":"d-1","person":"[[crm.people/jo]]"}'])).code.should.equal(0)
-      ;(await wiki(['write', 'acme.crm.notes', 'Our champion is [[crm.people/jo|Jo]].'])).code.should.equal(0)
+      ;(await wiki(['write', 'acme:crm.deals', 'Deals', '--metadata', '{"key":"id"}'])).code.should.equal(0)
+      ;(await wiki(['set', 'acme:crm.deals', '{"id":"d-1","person":"[[crm.people/jo]]"}'])).code.should.equal(0)
+      ;(await wiki(['write', 'acme:crm.notes', 'Our champion is [[crm.people/jo|Jo]].'])).code.should.equal(0)
 
-      const links = await wiki(['links', 'acme.crm.people/jo'])
+      const links = await wiki(['links', 'acme:crm.people/jo'])
       links.code.should.equal(0, links.stderr)
-      links.stdout.should.containEql('acme.crm.deals/d-1')
-      links.stdout.should.containEql('acme.crm.notes')
+      links.stdout.should.containEql('acme:crm.deals/d-1')
+      links.stdout.should.containEql('acme:crm.notes')
 
-      const hits = await wiki(['search', 'acme', 'proposal'])
+      const hits = await wiki(['search', 'acme:', 'proposal'])
       hits.code.should.equal(0)
-      hits.stdout.should.startWith('acme.crm.people/jo')
+      hits.stdout.should.startWith('acme:crm.people/jo')
     })
 
     it('reads a table as it stood at a moment', async () => {
       const at = new Date().toISOString()
       await new Promise((resolve) => setTimeout(resolve, 5))
-      ;(await wiki(['set', 'acme.crm.people', '{"id":"sam","name":"Sam"}'])).code.should.equal(0)
-      const then = await wiki(['records', 'acme.crm.people', '--at', at, '--json'])
+      ;(await wiki(['set', 'acme:crm.people', '{"id":"sam","name":"Sam"}'])).code.should.equal(0)
+      const then = await wiki(['records', 'acme:crm.people', '--at', at, '--json'])
       then.code.should.equal(0, then.stderr)
       JSON.parse(then.stdout).records.map((record) => record.id).should.deepEqual(['jo'])
     })
@@ -378,28 +378,28 @@ describe('wiki CLI (end to end)', () => {
 
   describe('exit codes and errors', () => {
     it('edits one exact string, and refuses an ambiguous one', async () => {
-      await wiki(['write', 'acme.edit-doc', 'one two one'])
-      const ambiguous = await wiki(['edit', 'acme.edit-doc', '--old', 'one', '--new', '1'])
+      await wiki(['write', 'acme:edit-doc', 'one two one'])
+      const ambiguous = await wiki(['edit', 'acme:edit-doc', '--old', 'one', '--new', '1'])
       ambiguous.code.should.equal(2)
       ambiguous.stderr.should.containEql('occurs 2 times')
-      const edited = await wiki(['edit', 'acme.edit-doc', '--old', 'two', '--new', '2'])
+      const edited = await wiki(['edit', 'acme:edit-doc', '--old', 'two', '--new', '2'])
       edited.code.should.equal(0, edited.stderr)
       edited.stderr.should.containEql('1 replaced')
-      ;(await wiki(['edit', 'acme.edit-doc', '--old', 'one', '--new', '1', '--all'])).code.should.equal(0)
-      ;(await wiki(['read', 'acme.edit-doc'])).stdout.should.equal('1 2 1\n')
+      ;(await wiki(['edit', 'acme:edit-doc', '--old', 'one', '--new', '1', '--all'])).code.should.equal(0)
+      ;(await wiki(['read', 'acme:edit-doc'])).stdout.should.equal('1 2 1\n')
     })
 
     it('points a page verb at a record, and a record verb at a page, to the right one', async () => {
-      const read = await wiki(['read', 'acme.tasks/t-1'])
+      const read = await wiki(['read', 'acme:tasks/t-1'])
       read.code.should.equal(2)
       read.stderr.should.containEql('wiki get')
-      const get = await wiki(['get', 'acme.tasks'])
+      const get = await wiki(['get', 'acme:tasks'])
       get.code.should.equal(2)
       get.stderr.should.containEql('wiki read')
     })
 
     it('exits 3 for missing nodes', async () => {
-      (await wiki(['read', 'acme.nope'])).code.should.equal(3)
+      (await wiki(['read', 'acme:nope'])).code.should.equal(3)
     })
 
     it('exits 2 for invalid arguments', async () => {
@@ -409,18 +409,18 @@ describe('wiki CLI (end to end)', () => {
     })
 
     it('exits 5 without credentials', async () => {
-      (await wiki(['read', 'acme'], { token: null })).code.should.equal(5)
+      (await wiki(['read', 'acme:'], { token: null })).code.should.equal(5)
     })
 
     it('exits 6 when the token is not authorized', async () => {
-      const read = await wiki(['read', 'acme'], { token: 'read-token' })
+      const read = await wiki(['read', 'acme:'], { token: 'read-token' })
       read.code.should.equal(0)
-      const write = await wiki(['write', 'acme.denied', 'x'], { token: 'read-token' })
+      const write = await wiki(['write', 'acme:denied', 'x'], { token: 'read-token' })
       write.code.should.equal(6)
     })
 
     it('keeps errors off stdout', async () => {
-      const result = await wiki(['read', 'acme.nope'])
+      const result = await wiki(['read', 'acme:nope'])
       result.stdout.should.equal('')
       result.stderr.should.containEql('wiki:')
     })

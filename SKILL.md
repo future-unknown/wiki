@@ -1,18 +1,18 @@
 ---
 name: wiki
-description: Read and write shared documentation in a wiki using the `wiki` CLI. Use when a task requires looking up, recording, or reorganizing knowledge that lives in a wiki addressed by dot-separated paths like acme.about.foo.
+description: Read and write shared documentation in a wiki using the `wiki` CLI. Use when a task requires looking up, recording, or reorganizing knowledge that lives in a wiki addressed by dot-separated paths like acme:about.foo.
 ---
 
 # Working with a wiki
 
 wiki is a shared, versioned knowledge base used by both agents and humans. You
-interact with it through the `wiki` CLI. Everything is a page addressed by a
-dot-separated path; the first segment is the wiki itself:
+interact with it through the `wiki` CLI. Everything is a page addressed by the
+wiki's name, a colon, and a dot-separated path within it:
 
 ```text
-acme                the wiki root (also a page)
-acme.about          a section (also a page)
-acme.about.foo      a page inside that section
+acme:               the wiki root (also a page)
+acme:about          a section (also a page)
+acme:about.foo      a page inside that section
 ```
 
 Content is Markdown. A page can hold content *and* have children — there is no
@@ -74,22 +74,22 @@ The CLI reads `WIKI_URL` and `WIKI_TOKEN` from the environment (or
 
 ```bash
 # 1. read the page and keep its revisionId
-wiki read acme.about.foo --json
+wiki read acme:about.foo --json
 # -> { ..., "content": "...", "revisionId": "3f2a..." }
 
 # 2a. change one part: the exact text you read, and what replaces it
-wiki edit acme.about.foo --old "Deploys run nightly." --new "Deploys run hourly."
+wiki edit acme:about.foo --old "Deploys run nightly." --new "Deploys run hourly."
 
 # 2b. or rewrite the page whole, conditionally
-wiki write acme.about.foo --if-revision 3f2a... <<'EOF'
+wiki write acme:about.foo --if-revision 3f2a... <<'EOF'
 # Foo
 
 Updated documentation.
 EOF
 
 # 3. if that exits with code 4 (conflict): see the other change, reread, merge, retry
-wiki diff acme.about.foo          # what the other writer changed
-wiki read acme.about.foo --json   # fresh content + fresh revisionId
+wiki diff acme:about.foo          # what the other writer changed
+wiki read acme:about.foo --json   # fresh content + fresh revisionId
 ```
 
 ## Commands
@@ -103,9 +103,9 @@ without a history call. `--change <id>` or `--at <iso>` read historical
 states (mutually exclusive).
 
 ```bash
-wiki read acme.about.foo
-wiki read acme.about.foo --json
-wiki read acme.about.foo --change 123
+wiki read acme:about.foo
+wiki read acme:about.foo --json
+wiki read acme:about.foo --change 123
 ```
 
 ### Write a page — `wiki write <path> [content]`
@@ -120,9 +120,9 @@ segment before writing; a typo there creates a new wiki instead of failing.
 Omitted `--title`/`--metadata` are preserved, but content is replaced whole.
 
 ```bash
-wiki write acme.about.foo "Short note"
-wiki write acme.about.foo < foo.md
-wiki write acme.guides.deploy --file deploy.md --title "Deploying" --message "initial guide"
+wiki write acme:about.foo "Short note"
+wiki write acme:about.foo < foo.md
+wiki write acme:guides.deploy --file deploy.md --title "Deploying" --message "initial guide"
 ```
 
 ### Change part of a page — `wiki edit <path> --old <text> --new <text>`
@@ -138,8 +138,8 @@ are changing a sentence, a line, or a section rather than the whole
 page.
 
 ```bash
-wiki edit acme.about.foo --old "Q3 targets" --new "Q4 targets"
-wiki edit acme.about.foo --old "acme" --new "Acme" --all --message "capitalize"
+wiki edit acme:about.foo --old "Q3 targets" --new "Q4 targets"
+wiki edit acme:about.foo --old "acme" --new "Acme" --all --message "capitalize"
 ```
 
 ### Merge metadata — `wiki meta <path> [json]`
@@ -152,9 +152,9 @@ an authored change like `write`: it makes a revision and supports
 `--if-revision` and `--message '<why>'`.
 
 ```bash
-wiki meta acme.usage '{"retain": {"days": 90}}'
-wiki meta acme.tasks '{"key": "id"}' --message "tasks become a table"
-wiki meta acme.usage '{"retain": null}'
+wiki meta acme:usage '{"retain": {"days": 90}}'
+wiki meta acme:tasks '{"key": "id"}' --message "tasks become a table"
+wiki meta acme:usage '{"retain": null}'
 ```
 
 ### Browse — `wiki tree <path>`
@@ -166,8 +166,8 @@ it with `--depth <n>`. Supports `--change` / `--at` for historical trees and
 so you can find the pages that carry data without reading each one.
 
 ```bash
-wiki tree acme --depth 2
-wiki tree acme.architecture --json
+wiki tree acme: --depth 2
+wiki tree acme:architecture --json
 ```
 
 ### Search — `wiki search <path> <query>`
@@ -180,8 +180,8 @@ carries `kind` (`page` or `record`), `key`, and the record's heading as
 `title`. `--limit <n>` caps results.
 
 ```bash
-wiki search acme "authentication"
-wiki search acme.architecture "tokens" --json
+wiki search acme: "authentication"
+wiki search acme:architecture "tokens" --json
 ```
 
 ### History — `wiki history <path>[/<key>]`
@@ -200,8 +200,8 @@ more versions remain, pass the continuation token back with
 `--cursor <token>`.
 
 ```bash
-wiki history acme.about.foo --json
-wiki history acme.crm.contacts/jo
+wiki history acme:about.foo --json
+wiki history acme:crm.contacts/jo
 ```
 
 ### Diff — `wiki diff <path>[/<key>]`
@@ -221,9 +221,9 @@ directly (revision ids appear in `wiki history`, and in `wiki changes
 with the revision before it under `previous`.
 
 ```bash
-wiki diff acme.about.foo
-wiki diff acme.about.foo --change 12
-wiki diff acme.about.foo --revision 3f2a... --json
+wiki diff acme:about.foo
+wiki diff acme:about.foo --change 12
+wiki diff acme:about.foo --revision 3f2a... --json
 ```
 
 Given a record's address it shows what one version of that record
@@ -235,8 +235,8 @@ from `wiki history`. `--json` returns the version and the one before
 it under `previous`.
 
 ```bash
-wiki diff acme.crm.contacts/jo
-wiki diff acme.crm.contacts/jo --version 3
+wiki diff acme:crm.contacts/jo
+wiki diff acme:crm.contacts/jo --version 3
 ```
 
 ### What links here — `wiki links <path>[/<key>]`
@@ -248,8 +248,8 @@ record comes with its current value under `record`, so you can read
 them without another call. `--limit <n>` caps the list.
 
 ```bash
-wiki links acme.crm.contacts/jo
-wiki links acme.architecture --json
+wiki links acme:crm.contacts/jo
+wiki links acme:architecture --json
 ```
 
 ### Broken links — `wiki check <path>`
@@ -261,8 +261,8 @@ between pages*); this finds the ones that were there before, or that a
 move left behind.
 
 ```bash
-wiki check acme
-wiki check acme.crm --json
+wiki check acme:
+wiki check acme:crm --json
 ```
 
 ### Changes — `wiki changes <path>`
@@ -277,8 +277,8 @@ page and the change id to `wiki diff --change`. Record writes
 history (`wiki history <path>/<key>`).
 
 ```bash
-wiki changes acme --limit 20
-wiki changes acme.about --json
+wiki changes acme: --limit 20
+wiki changes acme:about --json
 ```
 
 ### Move — `wiki move <from> <to>`
@@ -289,7 +289,7 @@ same wiki, the destination parent must exist, and the destination must be
 free. Supports `--if-revision` and `--message`.
 
 ```bash
-wiki move acme.about.foo acme.archive.foo
+wiki move acme:about.foo acme:archive.foo
 ```
 
 ### Delete — `wiki rm <path>`
@@ -301,8 +301,8 @@ ensure the wiki has not changed at all since you inspected it. Supports
 later makes a fresh page.
 
 ```bash
-wiki rm acme.scratch
-wiki rm acme.old-section --recursive --if-change 57
+wiki rm acme:scratch
+wiki rm acme:old-section --recursive --if-change 57
 ```
 
 ## Records
@@ -343,7 +343,7 @@ content over a page per row: the table stays one page, and each record
 keeps its own history.
 
 A record is addressed as its page's path, a slash, and its key —
-`acme.crm.contacts/jo` — and linked the same way, wiki-relative:
+`acme:crm.contacts/jo` — and linked the same way, wiki-relative:
 `[[crm.contacts/jo]]`. A record field whose value is a link is how one
 record points at another (a deal's `person`, a call's `contact`):
 `wiki links` reads those relations backwards, so do not copy one
@@ -369,10 +369,10 @@ Supply the record inline or via stdin (inline wins). The page must
 already exist. Tables take `--if-version <n>`; logs take `--ts <iso>`.
 
 ```bash
-wiki set acme.usage '{"requests": 1042}'
-wiki set acme.tasks '{"id": "t-41", "status": "claimed", "by": "agent-7"}' --if-version 1
-wiki set acme.usage --ts 2026-08-01T00:00:00Z < record.json
-wiki set acme.crm.contacts '{"id": "jo", "name": "Jo Smith", "content": "## Intro\n\nMet at the summit."}'
+wiki set acme:usage '{"requests": 1042}'
+wiki set acme:tasks '{"id": "t-41", "status": "claimed", "by": "agent-7"}' --if-version 1
+wiki set acme:usage --ts 2026-08-01T00:00:00Z < record.json
+wiki set acme:crm.contacts '{"id": "jo", "name": "Jo Smith", "content": "## Intro\n\nMet at the summit."}'
 ```
 
 ### Read one record — `wiki get <path>/<key>`
@@ -382,8 +382,8 @@ log entry by its `_id`. The address is the page's path, a slash, and
 the key.
 
 ```bash
-wiki get acme.tasks/t-41
-wiki get acme.crm.contacts/jo --json
+wiki get acme:tasks/t-41
+wiki get acme:crm.contacts/jo --json
 ```
 
 ### Read records — `wiki records <path>`
@@ -404,10 +404,10 @@ pages, the records written by then. A deleted log record is gone from
 every moment.
 
 ```bash
-wiki records acme.tasks --at 2026-09-01T00:00:00Z
-wiki records acme.usage --since 2026-08-01T00:00:00Z --limit 100
-wiki records acme.usage --reverse --limit 20
-wiki records acme.usage --latest
+wiki records acme:tasks --at 2026-09-01T00:00:00Z
+wiki records acme:usage --since 2026-08-01T00:00:00Z --limit 100
+wiki records acme:usage --reverse --limit 20
+wiki records acme:usage --latest
 ```
 
 ### Delete a record — `wiki del <path>/<key>`
@@ -418,7 +418,7 @@ version. Deleting records is curation and needs write access, not just
 record access.
 
 ```bash
-wiki del acme.tasks/t-41
+wiki del acme:tasks/t-41
 ```
 
 ## Typed pages
@@ -429,7 +429,7 @@ content is still just content — write it with the same safe edit loop.
 Rows belong in records, not in content: make the page a table.
 
 ```bash
-wiki write acme.config.flags --metadata '{"type":"json"}' <<'EOF'
+wiki write acme:config.flags --metadata '{"type":"json"}' <<'EOF'
 {"beta": true, "regions": ["us", "eu"]}
 EOF
 ```
