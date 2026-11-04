@@ -116,9 +116,12 @@ async function signedInTab (known, b, { returnTo = '#/deals' } = {}) {
 }
 
 describe('wiki/session', () => {
-  it('scopes name wikis to read, and a granted scope names them back', () => {
-    scopeFor('acme_deals', ['acme_labs']).should.equal('wiki:acme_deals:read wiki:acme_labs:read')
-    wikisOf('wiki:acme_deals:read wiki:acme_labs:read wiki:acme_deals:read').should.eql(['acme_deals', 'acme_labs'])
+  it('scopes name wikis, and a granted scope names them back in either form', () => {
+    scopeFor('acme_deals', ['acme_labs']).should.equal('wiki:acme_deals wiki:acme_labs')
+    wikisOf('wiki:acme_deals wiki:acme_labs wiki:acme_deals').should.eql(['acme_deals', 'acme_labs'])
+    // the form sites asked in before writes, which Known answers them in still
+    wikisOf('wiki:acme_deals:read wiki:acme_labs:read').should.eql(['acme_deals', 'acme_labs'])
+    wikisOf('wiki:acme_deals:write openid').should.eql([])
     wikisOf('').should.eql([])
   })
 
@@ -133,7 +136,7 @@ describe('wiki/session', () => {
     tab.state().status.should.equal('redirecting')
     const url = new URL(tab.location.assigned)
     url.origin.should.equal('https://known.example')
-    Object.fromEntries(url.searchParams).should.containEql({ response_type: 'code', client_id: CLIENT, redirect_uri: REDIRECT, scope: 'wiki:acme_deals:read', code_challenge_method: 'S256' })
+    Object.fromEntries(url.searchParams).should.containEql({ response_type: 'code', client_id: CLIENT, redirect_uri: REDIRECT, scope: 'wiki:acme_deals', code_challenge_method: 'S256' })
     url.searchParams.get('code_challenge').should.match(/^[A-Za-z0-9_-]{43}$/)
     const kept = JSON.parse(b.pending.map.get(`known.session.${CLIENT}.pending`))
     kept.returnTo.should.equal('#/deals')
@@ -145,7 +148,7 @@ describe('wiki/session', () => {
     const b = browser(known)
     const { tab, started } = await signedInTab(known, b)
     started.should.eql({ returnTo: '#/deals' })
-    tab.state().should.containEql({ status: 'signed-in', scope: 'wiki:acme_deals:read', wikis: ['acme_deals'], error: null })
+    tab.state().should.containEql({ status: 'signed-in', scope: 'wiki:acme_deals', wikis: ['acme_deals'], error: null })
     tab.location.href.should.equal(REDIRECT)
     Object.keys(tab.state()).should.not.containEql('accessToken')
     should(b.pending.map.size).equal(0)
