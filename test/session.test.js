@@ -1,6 +1,6 @@
 import should from 'should'
 import { createHash } from 'node:crypto'
-import { createSessionStore, methodryAuth, scopeFor, wikisOf } from '../lib/session/index.js'
+import { PREVIEW_TOKEN_MESSAGE, createSessionStore, methodryAuth, previewOfPage, scopeFor, wikisOf } from '../lib/session/index.js'
 
 /**
  * wiki/session against a stand-in for Known's sign-in: an authorize
@@ -260,5 +260,109 @@ describe('wiki/session', () => {
     await tab.state().signOut()
     ;(await auth.headers()).should.eql({})
     should(await auth.reauthenticate()).be.null()
+  })
+})
+
+describe('wiki/session beside a wiki', () => {
+  const KNOWN = 'https://known.example'
+
+  // A page framed by Known: messages reach `answer`, and what it says comes
+  // back from the parent. `from` overrides who it seems to come from.
+  function framed (answer, { from = KNOWN, source = null } = {}) {
+    const listeners = new Set()
+    const events = {
+      addEventListener: (type, fn) => { if (type === 'message') listeners.add(fn) },
+      removeEventListener: (type, fn) => listeners.delete(fn)
+    }
+    const asked = []
+    const parent = {
+      postMessage (message, targetOrigin) {
+        asked.push({ message, targetOrigin })
+        const data = answer(message, asked.length)
+        if (data === undefined) return
+        queueMicrotask(() => { for (const fn of [...listeners]) fn({ origin: from, source: source ?? parent, data: { type: message.type, id: message.id, ...data } }) })
+      }
+    }
+    const storage = memoryStorage()
+    const assigned = []
+    const store = createSessionStore({
+      clientId: CLIENT,
+      redirectUri: REDIRECT,
+      signIn: ENDPOINTS,
+      storage,
+      pendingStorage: memoryStorage(),
+      fetch: async () => { throw new Error('a framed page calls no token endpoint') },
+      location: { href: REDIRECT, assign: (url) => assigned.push(url) },
+      history: {},
+      locks: null,
+      events,
+      preview: { parent: KNOWN },
+      parent
+    })
+    return { store, asked, assigned, storage, listeners }
+  }
+
+  it('asks its parent for a token instead of signing in, by the origin its settings name', async () => {
+    const { store, asked, assigned, storage } = framed(() => ({ accessToken: 'at1', expiresIn: 3600, wikis: ['capital', 'docs'] }))
+    await store.getState().start()
+    should(await store.getState().getToken()).equal('at1')
+    should(asked[0].targetOrigin).equal(KNOWN)
+    should(asked[0].message.type).equal(PREVIEW_TOKEN_MESSAGE)
+    should(await store.getState().getToken()).equal('at1')
+    should(store.getState().wikis).deepEqual(['capital', 'docs'])
+    should(assigned).be.empty()
+    should(storage.map.size).equal(0)
+  })
+
+  it('asks again when the token is about to lapse, one ask at a time', async () => {
+    const { store, asked } = framed((message, count) => ({ accessToken: `at${count}`, expiresIn: 30, wikis: [] }))
+    await store.getState().start()
+    const [one, two] = await Promise.all([store.getState().getToken(), store.getState().getToken()])
+    should(one).equal('at2')
+    should(two).equal('at2')
+    should(asked.length).equal(2)
+  })
+
+  it('hears nobody but the parent it names', async () => {
+    const stranger = framed(() => ({ accessToken: 'stolen', expiresIn: 3600, wikis: [] }), { from: 'https://evil.example' })
+    const other = framed(() => ({ accessToken: 'stolen', expiresIn: 3600, wikis: [] }), { source: { postMessage () {} } })
+    for (const { store, listeners } of [stranger, other]) {
+      const started = store.getState().start()
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      should(store.getState().status).equal('checking')
+      should(listeners.size).equal(1)
+      for (const fn of listeners) fn({ origin: KNOWN, source: store, data: { type: 'other' } })
+      started.catch(() => {})
+    }
+  })
+
+  it('takes a refusal as signed out, and stays so until asked to sign in', async () => {
+    let refuse = true
+    const { store, asked, assigned } = framed(() => (refuse ? { error: { code: 'not_allowed', message: 'needs access to its wiki' } } : { accessToken: 'at2', expiresIn: 3600, wikis: ['docs'] }))
+    await store.getState().start()
+    should(store.getState().error.code).equal('not_allowed')
+    should(await store.getState().getToken()).equal(null)
+    should(asked.length).equal(1)
+
+    refuse = false
+    await store.getState().signIn()
+    should(await store.getState().getToken()).equal('at2')
+    should(assigned).be.empty()
+
+    await store.getState().signOut()
+    should(await store.getState().getToken()).equal(null)
+  })
+
+  it('is on only for a framed page whose settings say so', () => {
+    const page = (text) => ({ getElementById: (id) => (id === 'known-site' && text !== null ? { textContent: text } : null) })
+    const self = {}
+    const parent = {}
+    const settings = JSON.stringify({ clientId: 'app', preview: { parent: KNOWN } })
+    should(previewOfPage({ document: page(settings), self, parent })).deepEqual({ parent: KNOWN })
+    should(previewOfPage({ document: page(settings), self, parent: self })).equal(null)
+    should(previewOfPage({ document: page(JSON.stringify({ clientId: 'app' })), self, parent })).equal(null)
+    should(previewOfPage({ document: page('not json'), self, parent })).equal(null)
+    should(previewOfPage({ document: page(null), self, parent })).equal(null)
+    should(previewOfPage({ document: undefined, self, parent })).equal(null)
   })
 })
