@@ -22,6 +22,18 @@ describe('search', () => {
     byPath.map((result) => result.path).should.containEql('about.baz')
   })
 
+  it('ranks a page by what it is called before what it says: title, then path, then text', async () => {
+    const { kit } = await createTestKit()
+    const { wikiId } = await seedAcme(kit)
+    // "deploy" many times in one page's text, once in another's title, and
+    // only in a third's path.
+    await kit.setNode({ wikiId, path: 'notes.long', title: 'Meeting notes', content: 'We deploy on Fridays. The deploy script runs twice. Every deploy is logged, and a deploy can be rolled back.', actor: human })
+    await kit.setNode({ wikiId, path: 'ops.shipping', title: 'Deploy', content: 'How releases reach the servers.', actor: human })
+    await kit.setNode({ wikiId, path: 'ops.deploy', title: 'Shipping', content: 'How releases reach the servers.', actor: human })
+    const results = await kit.search({ wikiId, query: 'deploy' })
+    results.map((result) => result.path).should.deepEqual(['ops.shipping', 'ops.deploy', 'notes.long'])
+  })
+
   it('scopes search to a subtree', async () => {
     const { kit } = await createTestKit()
     const { wikiId } = await seedAcme(kit)
