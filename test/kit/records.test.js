@@ -359,6 +359,18 @@ describe('records', () => {
 
       await kit.getWikiActivity({ wikiId: 'nope' }).should.be.rejectedWith(NotFoundError)
 
+      // the span counts commits and record writes by day, and the people behind them
+      const month = await kit.getWikiActivity({ wikiId, days: 30 })
+      month.span.days.should.equal(30)
+      month.span.commits.should.have.length(30)
+      month.span.writes.should.have.length(30)
+      month.span.writes[29].should.equal(2)
+      month.span.total.should.equal(month.span.commits[29] + 2)
+      // the human (direct, and through the test agent) and the other agent
+      month.span.people.should.equal(2)
+      latest.span.days.should.equal(7)
+      await kit.getWikiActivity({ wikiId, days: 0 }).should.be.rejectedWith(ValidationError)
+
       // reading is not activity: a full read re-syncs the summary but moves nothing,
       // and a read of a page with no records leaves no trace at all
       const before = await kit.getWikiActivity({ wikiId })
