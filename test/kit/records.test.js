@@ -311,7 +311,7 @@ describe('records', () => {
       const { wikiId } = await seedAcme(kit)
       await kit.putRecord({ wikiId, path: 'about.foo', value: { n: 1 }, ts: '2026-01-01T00:00:00Z', actor: agent })
       await kit.putRecord({ wikiId, path: 'about.foo', value: { n: 2 }, ts: '2026-01-02T00:00:00Z', actor: agent })
-      await kit.putRecord({ wikiId, path: 'about', value: { n: 3 }, ts: '2026-01-03T00:00:00Z', actor: agent })
+      await kit.putRecord({ wikiId, path: 'about.bar', value: { n: 3 }, ts: '2026-01-03T00:00:00Z', actor: agent })
 
       // an upgrade finds records but no projection
       db.prepare('DELETE FROM node_records').run()

@@ -210,6 +210,10 @@ moment. `metadata.schema` (JSON Schema) is enforced on every put. On a
 table, a record whose `content` is a string carries a Markdown
 document, headed by its `title`, else its `name`, else its key; table
 records are searchable beside pages.
+A page that holds records is a leaf: a table or a log takes no pages
+under it, and a page with pages under it takes no key and no records
+(`LeafPageError`, refused on write, on move and on `set`); a table that
+already had pages under it keeps working, and its pages move out.
 The declarations are authored intent, so they live in versioned
 metadata — merged field-wise with `wiki meta`; the records themselves
 do not. Record storage speaks the DynamoDB API behind the scenes: a

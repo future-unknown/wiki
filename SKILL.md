@@ -16,7 +16,8 @@ acme:about.foo      a page inside that section
 ```
 
 Content is Markdown. A page can hold content *and* have children — there is no
-file-vs-directory distinction. Every change is recorded permanently; nothing
+file-vs-directory distinction, with one exception: a page that holds records
+is a leaf (see *Records* below). Every change is recorded permanently; nothing
 you overwrite or delete is lost.
 
 Every page is also a small data store: **a document you can read plus records
@@ -332,6 +333,14 @@ One declaration decides how a page's records behave:
   happened — `--ts <iso>` backfills it — and `_written` when the wiki
   got it. `metadata.retain` (`{"days": n}`) expires old records, so do
   not treat a log as permanent storage.
+
+**A page that holds records is a leaf.** A table or a log takes no pages
+under it, and a page with pages under it takes no key and no records —
+so a table's rows are never mistaken for its pages. A write or a move
+that would break this is refused, and says so: put the page beside the
+table (`acme:crm.contacts-guide`, not `acme:crm.contacts.guide`), and
+give the records a page of their own (`acme:crm.contacts`, not
+`acme:crm`). What is about one row belongs in that row's `content`.
 
 **A record can carry writing.** On a table, a record whose `content`
 field is a string carries a Markdown document — notes on a contact,
