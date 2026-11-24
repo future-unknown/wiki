@@ -273,9 +273,16 @@ message, and the pages it touched, each marked `created`, `updated`,
 `moved`, or `deleted`. A subtree path scopes it to changes under that
 page. `--limit <n>` caps changes; `--before <change id>` continues an
 earlier listing. To see what a listed change did to a page, pass the
-page and the change id to `wiki diff --change`. Record writes
-(`wiki set`) are not listed here; a table row's changes are in its own
-history (`wiki history <path>/<key>`).
+page and the change id to `wiki diff --change`.
+
+Writes to a table's rows are listed among the changes, as runs: one
+writer's writes to one table — who, when, the table (or the row's
+address when the run wrote one row), and how many writes created,
+updated, or deleted rows. With `--json` a run is an entry with `batch`
+and `records` in place of `id` and `pages`. To see what a write did to
+a row, read the row's history (`wiki history <path>/<key>`) and
+`wiki diff <path>/<key>`. A log's entries are not listed. `--pages`
+leaves the runs out.
 
 ```bash
 wiki changes acme: --limit 20
@@ -318,7 +325,8 @@ state, config. The rule for choosing:
 - **`wiki set`** when you are writing *one of many things of the same
   shape* — a contact, a task, a decision, an event, a measurement.
   Records are stamped (`_actor`, `_ts`, `_v`, and `_id`, the record's
-  address within its page) and are not listed in the wiki's changes.
+  address within its page). Writes to a table's rows show in the
+  wiki's changes as runs of writes; a log's entries do not.
 
 One declaration decides how a page's records behave:
 

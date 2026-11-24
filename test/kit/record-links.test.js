@@ -356,7 +356,7 @@ describe('links, record search, and version retention', () => {
     it('leaves the record backfills pending while there is no record store', async () => {
       const { db } = await createTestKit()
       db.prepare('SELECT id FROM pending_backfills ORDER BY id').all().map((row) => row.id)
-        .should.deepEqual(['record-code-links', 'record-index', 'record-links-added', 'record-versions', 'record-wiki-links'])
+        .should.deepEqual(['record-changes', 'record-code-links', 'record-index', 'record-links-added', 'record-versions', 'record-wiki-links'])
     })
 
     it('indexes the links to other wikis that content carried before links could name one', async () => {

@@ -290,6 +290,23 @@ describe('wiki-api', () => {
       scoped.result.length.should.equal(1)
       scoped.result[0].pages[0].kind.should.equal('created')
     })
+
+    it('lists writes to a table among the changes when asked, and reads a batch back', async () => {
+      const { rpc } = await createTestApi()
+      await seed(rpc)
+      await rpc('wiki.write', { path: 'acme:tasks', content: 'tasks', metadata: { key: 'id' } })
+      await rpc('wiki.set', { path: 'acme:tasks', value: { id: 't1', status: 'open' } })
+      await rpc('wiki.set', { path: 'acme:tasks', value: { id: 't1', status: 'done' } })
+      const plain = await rpc('wiki.changes', { path: 'acme:' })
+      plain.result.every((entry) => entry.pages).should.be.true()
+      const log = await rpc('wiki.changes', { path: 'acme:', records: true })
+      const [batch] = log.result
+      batch.records.should.containEql({ fullPath: 'acme:tasks', key: 't1', writes: 2, count: 1, created: 1, updated: 1 })
+      const read = await rpc('wiki.getRecordChanges', { wiki: 'acme', batch: batch.batch })
+      read.result.records.fullPath.should.equal('acme:tasks')
+      read.result.writes.map((write) => [write.key, write.version, write.change])
+        .should.deepEqual([['t1', 2, 'updated'], ['t1', 1, 'created']])
+    })
   })
 
   describe('wiki.move / wiki.remove', () => {

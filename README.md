@@ -180,7 +180,7 @@ wiki del <path>/<key>        # delete one record by key (or _id on a log)
 # history and changes
 wiki history <path>[/<key>]  # a page's revisions, or a table row's versions, newest first
 wiki diff <path>[/<key>]     # what a revision or a row version changed; --change, --revision, --version
-wiki changes <path>          # what changed in the wiki, and the pages each change touched; --limit, --before
+wiki changes <path>          # what changed in the wiki: the pages each change touched, and each run of writes to a table's records; --limit, --before, --pages
 ```
 
 Pages take **notes** — append-only feedback attached to the page's
@@ -194,7 +194,7 @@ naming its page's current path.
 Pages also carry **records** — every page is a document you can read
 plus records you can query. A record is a JSON object written with
 `wiki set`, stamped with `_actor`, `_ts`, a version `_v`, and `_id`
-(its address within the page), outside the change model: no change,
+(its address within the page), outside the change model: no commit,
 attached to the page's identity, so records survive moves and become
 unreachable with deletion. One declaration decides the behavior: a
 page with `metadata.key` is a **table** (`set` adds or replaces by key,
@@ -280,6 +280,17 @@ Three central tables, all owned by `lib/kit`:
 and content, updated inside the same transaction as every mutation. It is
 replaceable; the architecture allows future projections (e.g. embeddings)
 without schema changes.
+
+`record_changes` is the journal of writes to table records: one row a
+write — the record's key, the version the write made, what it did, who,
+when, and the wiki's latest commit then (`after_commit`), which places
+the write among the changes. Writes gather into batches: one writer's
+run of writes to one table with no commit between them and no pause over
+an hour. `wiki.changes` with `records` lists batches among the commits,
+`wiki.getRecordChanges` reads one with its writes, and `countChanges`
+counts a batch as one change. A log's appends are not journaled. The
+writes from before the journal are read back, once, from the versions
+tables kept.
 
 `node_records` is a projection over the record store: per page, how many
 records it holds, the latest stamp among them, and who last wrote. The kit moves it on every
