@@ -214,6 +214,21 @@ A page that holds records is a leaf: a table or a log takes no pages
 under it, and a page with pages under it takes no key and no records
 (`LeafPageError`, refused on write, on move and on `set`); a table that
 already had pages under it keeps working, and its pages move out.
+A table with `metadata.personal` (`true`, or `{"rows": n}`) is a
+**personal table**: one set of rows per person. A write is always the
+writer's own row, a read answers with the reader's own rows, and two
+people may each hold a row under one key. A principal the host marks
+`everyone` (a wiki's admins, say) reads every person's rows, each
+stamped `_owner`, and may name one person (`person`) to read or delete
+theirs; `wiki.recordOwners` lists the people a table holds rows for.
+Each person holds at most `rows` rows (1000 unless declared;
+`RecordLimitError`) and each row keeps ten versions unless
+`retain.versions` says otherwise. Personal writes stay out of the
+change list, the activity counts and the link index; search and the
+tree's record counts follow the same rule as reads. Rows are stored at
+`<page id>~<person id>#<key>`, beside the page's own range, so a read
+that knows nothing of owners reaches no one's rows. A table that holds
+rows cannot change between shared and personal.
 The declarations are authored intent, so they live in versioned
 metadata — merged field-wise with `wiki meta`; the records themselves
 do not. Record storage speaks the DynamoDB API behind the scenes: a
