@@ -221,6 +221,8 @@ people may each hold a row under one key. A principal the host marks
 `everyone` (a wiki's admins, say) reads every person's rows, each
 stamped `_owner`, and may name one person (`person`) to read or delete
 theirs; `wiki.recordOwners` lists the people a table holds rows for.
+`wiki.clear` removes every row one person holds, and the versions kept
+of them — a person's own, or the person an `everyone` principal names.
 Each person holds at most `rows` rows (1000 unless declared;
 `RecordLimitError`) and each row keeps ten versions unless
 `retain.versions` says otherwise. Personal writes stay out of the

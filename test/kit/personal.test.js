@@ -232,6 +232,51 @@ describe('personal tables', () => {
     })
   })
 
+  describe('clearing one person', () => {
+    it('removes their rows and every version kept of them, and leaves everyone else\'s', async () => {
+      const { kit, db, wikiId, records, put, rows } = await personalKit()
+      await put(dana, { id: 'a', note: 'saffron' })
+      await put(dana, { id: 'a', note: 'saffron again' })
+      await put(dana, { id: 'b' })
+      await put(eli, { id: 'a', note: 'saffron' })
+      await kit.deleteRecord({ wikiId, path: 'progress', key: 'b', actor: dana, owner: 'user_dana' })
+
+      const cleared = await kit.clearOwnerRecords({ wikiId, path: 'progress', owner: 'user_dana', actor: human })
+      cleared.should.deepEqual({ owner: 'user_dana', rows: 1, versions: 4 })
+
+      ;(await rows('user_dana')).records.should.have.length(0)
+      await kit.getRecordHistory({ wikiId, path: 'progress', key: 'a', owner: 'user_dana' })
+        .should.be.rejectedWith(NotFoundError, { message: /no history/ })
+      ;(await rows('user_eli')).records.map((record) => record._id).should.deepEqual(['a'])
+      ;(await kit.getRecordHistory({ wikiId, path: 'progress', key: 'a', owner: 'user_eli' })).versions.should.have.length(1)
+
+      const { items } = await records.query({ pk: wikiId, from: '', to: '\uffff' })
+      items.filter((item) => item.sk.includes('~user_dana#')).should.have.length(0)
+      const { owners } = await kit.getRecordOwners({ wikiId, path: 'progress' })
+      owners.map((entry) => [entry.owner, entry.count]).should.deepEqual([['user_eli', 1]])
+      db.prepare('SELECT owner FROM record_search').all().map((row) => row.owner).should.deepEqual(['user_eli'])
+      ;(await kit.search({ wikiId, query: 'saffron', everyone: true })).filter((hit) => hit.kind === 'record').map((hit) => hit.owner).should.deepEqual(['user_eli'])
+
+      // again, and for someone who holds nothing: nothing to do
+      ;(await kit.clearOwnerRecords({ wikiId, path: 'progress', owner: 'user_dana', actor: human })).should.deepEqual({ owner: 'user_dana', rows: 0, versions: 0 })
+    })
+
+    it('clears more rows than one transaction holds', async () => {
+      const { kit, wikiId, put, rows } = await personalKit()
+      for (let at = 0; at < 120; at += 1) await put(dana, { id: `k${at}` })
+      const cleared = await kit.clearOwnerRecords({ wikiId, path: 'progress', owner: 'user_dana', actor: human })
+      cleared.should.deepEqual({ owner: 'user_dana', rows: 120, versions: 120 })
+      ;(await rows('user_dana')).records.should.have.length(0)
+    })
+
+    it('is for personal tables alone', async () => {
+      const { kit, wikiId } = await personalKit()
+      await kit.setNode({ wikiId, path: 'shared', content: '', metadata: { key: 'id' }, actor: human })
+      await kit.clearOwnerRecords({ wikiId, path: 'shared', owner: 'user_dana', actor: human })
+        .should.be.rejectedWith(ValidationError, { message: /only a personal table/ })
+    })
+  })
+
   describe('a shared table', () => {
     it('ignores an owner and everyone', async () => {
       const { kit, wikiId } = await personalKit()
@@ -298,9 +343,11 @@ describe('personal tables', () => {
       const { kit, wikiId, put } = await personalKit()
       await put(dana, { id: 'a', note: 'saffron harvest' })
       await put(eli, { id: 'a', note: 'saffron prices' })
-      const keys = (hits) => hits.filter((hit) => hit.kind === 'record').map((hit) => [hit.owner, hit.key, hit.excerpt])
+      // The store keeps a row's fields in no order, so the excerpt is
+      // matched by the words around the hit.
+      const keys = (hits) => hits.filter((hit) => hit.kind === 'record').map((hit) => [hit.owner, hit.key, hit.excerpt.match(/\[saffron\] \w+/)?.[0]])
       const danas = await kit.search({ wikiId, query: 'saffron', owner: 'user_dana' })
-      keys(danas).should.deepEqual([['user_dana', 'a', '[saffron] harvest a']])
+      keys(danas).should.deepEqual([['user_dana', 'a', '[saffron] harvest']])
       const nobody = await kit.search({ wikiId, query: 'saffron' })
       keys(nobody).should.deepEqual([])
       const all = await kit.search({ wikiId, query: 'saffron', everyone: true })

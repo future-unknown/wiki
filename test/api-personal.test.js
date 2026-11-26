@@ -178,6 +178,26 @@ describe('wiki-api: personal tables', () => {
     refused.error.data.code.should.equal('UNAUTHORIZED')
   })
 
+  it('clears a person\'s own rows, or the person an admin names, and nobody else\'s', async () => {
+    const { rpc } = await createApi()
+    await rpc('wiki.set', { path: 'acme:progress', value: { id: 'l1' } }, 'dana')
+    await rpc('wiki.set', { path: 'acme:progress', value: { id: 'l1' } }, 'eli')
+    await rpc('wiki.set', { path: 'acme:progress', value: { id: 'l1' } }, 'admin')
+
+    const refused = await rpc('wiki.clear', { path: 'acme:progress', person: 'user_eli' }, 'dana')
+    refused.error.data.code.should.equal('UNAUTHORIZED')
+    const own = await rpc('wiki.clear', { path: 'acme:progress' }, 'dana')
+    own.result.rows.should.deepEqual({ of: 'person', person: 'user_dana' })
+    own.result.cleared.should.deepEqual({ rows: 1, versions: 1 })
+    const named = await rpc('wiki.clear', { path: 'acme:progress', person: 'user_eli' }, 'admin')
+    named.result.cleared.should.deepEqual({ rows: 1, versions: 1 })
+
+    const left = await rpc('wiki.records', { path: 'acme:progress' }, 'admin')
+    left.result.records.map((record) => record._owner).should.deepEqual(['user_admin'])
+    const shared = await rpc('wiki.clear', { path: 'acme:lessons' }, 'admin')
+    shared.error.data.code.should.equal('VALIDATION_ERROR')
+  })
+
   it('searches and counts a person\'s own rows, and everyone\'s for an admin', async () => {
     const { rpc } = await createApi()
     await rpc('wiki.set', { path: 'acme:progress', value: { id: 'l1', note: 'saffron' } }, 'dana')
